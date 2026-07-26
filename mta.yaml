@@ -1,0 +1,177 @@
+_schema-version: "3.3"
+ID: gen-ai-analytics-platform
+version: 1.0.0
+
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm install --prefix frontend
+        - npm run build
+
+modules:
+  # --------------------- APPROUTER MODULE ---------------------
+  - name: gen-ai-analytics-platform-router
+    # ------------------------------------------------------------
+    type: approuter.nodejs
+    path: ./router
+    build-parameters:
+      builder: npm
+      ignore: [".DS_Store", "node_modules/", "manifest*.yml"]
+    parameters:
+      buildpack: nodejs_buildpack
+      app-name: gen-ai-analytics-platform-router-${space}
+      disk-quota: 256MB
+      memory: 128MB
+      keep-existing-routes: true
+    requires:
+      - name: gen-ai-analytics-platform-destination
+      - name: gen-ai-analytics-platform-api
+      - name: gen-ai-analytics-platform-html5-repo-runtime
+    provides:
+      - name: gen-ai-analytics-platform-approuter
+        properties:
+          app-url: ${default-url}
+          application: ${app-name}
+          app-domain: ${default-domain}
+
+  # --------------------- SERVER MODULE (FASTAPI) ---------------
+  - name: gen-ai-analytics-platform-api
+    # ------------------------------------------------------------
+    type: python
+    path: ./backend/api
+    build-parameters:
+      ignore: [".DS_Store", "manifest*.yml", "node_modules/", "__pycache__/"]
+    parameters:
+      buildpack: python_buildpack
+      app-name: gen-ai-analytics-platform-api-${space}
+      memory: 512MB
+      disk-quota: 1024MB
+    properties:
+      appDomain: ~{gen-ai-analytics-platform-approuter/app-domain}
+      srvUrl: "https://${app-name}.${default-domain}"
+      approuterUrl: ~{gen-ai-analytics-platform-approuter/app-url}
+      appName: ~{gen-ai-analytics-platform-approuter/application}
+    provides:
+      - name: gen-ai-analytics-platform-api-props
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: gen-ai-analytics-platform-hdi-container
+      - name: gen-ai-analytics-platform-destination
+      - name: gen-ai-analytics-platform-approuter
+        parameters:
+          config:
+            instance_min_count: 1
+            instance_max_count: 2
+            scaling_rules:
+              - { "metric_type": "memoryutil", "threshold": 80, "operator": ">=", "adjustment": "+1" }
+              - { "metric_type": "memoryutil", "threshold": 60, "operator": "<", "adjustment": "-1" }
+              - { "metric_type": "cpu", "threshold": 80, "operator": ">=", "adjustment": "+1" }
+              - { "metric_type": "cpu", "threshold": 30, "operator": "<", "adjustment": "-1" }
+
+  # --------------------- UI MODULE (REACT + VITE) --------------
+  - name: gen-ai-analytics-platform-ui
+    # ------------------------------------------------------------
+    type: html5
+    path: ./frontend
+    build-parameters:
+      build-result: dist
+      builder: custom
+      ignore: [".DS_Store", "node_modules/", "manifest*.yml"]
+      commands:
+        - npm install
+        - npm run build
+      supported-platforms: []
+
+  # ------------------- HTML5 APP DEPLOYER ---------------------
+  - name: gen-ai-analytics-platform-app-deployer
+    # ------------------------------------------------------------
+    type: com.sap.html5.application-content
+    path: ./frontend
+    parameters:
+      buildpack: nodejs_buildpack
+      app-name: gen-ai-analytics-platform-app-deployer-${space}
+    build-parameters:
+      ignore: [".DS_Store", "node_modules/", "manifest*.yml"]
+      requires:
+        - name: gen-ai-analytics-platform-ui
+          artifacts:
+            - "*"
+          target-path: ./
+    requires:
+      - name: gen-ai-analytics-platform-html5-repo-host
+
+  # --------------------- DB MODULE (HANA HDI) -----------------
+  - name: gen-ai-analytics-platform-db-deployer
+    # ------------------------------------------------------------
+    type: hdb
+    path: ./backend/db
+    build-parameters:
+      ignore: [".DS_Store", "node_modules/", "manifest*.yml"]
+    parameters:
+      buildpack: nodejs_buildpack
+      app-name: gen-ai-analytics-platform-db-deployer-${space}
+      memory: 256MB
+      disk-quota: 1024MB
+    requires:
+      - name: gen-ai-analytics-platform-hdi-container
+
+resources:
+  # ----------------- DESTINATION SERVICE ----------------------
+  - name: gen-ai-analytics-platform-destination
+    # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    requires:
+      - name: gen-ai-analytics-platform-api-props
+    parameters:
+      service-plan: lite
+      service-name: ${space}-gen-ai-analytics-platform-destination
+      service: destination
+      config:
+        HTML5Runtime_enabled: true
+        version: 1.0.0
+        init_data:
+          instance:
+            existing_destinations_policy: update
+            destinations:
+              - Name: backend-api
+                Description: GEN-AI Analytics Platform Service API
+                URL: ~{gen-ai-analytics-platform-api-props/srv-url}
+                Type: HTTP
+                ProxyType: Internet
+                Authentication: NoAuthentication
+                HTML5.DynamicDestination: true
+                HTML5.Timeout: 300000
+                forwardAuthToken: false
+
+  # ----------------- HTML REPO HOST SERVICE -------------------
+  - name: gen-ai-analytics-platform-html5-repo-host
+    # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service-plan: app-host
+      service-name: ${space}-gen-ai-analytics-platform-html5-repo-host
+      service: html5-apps-repo
+      config:
+        sizeLimit: 2
+
+  # ----------------- HTML REPO RUNTIME SERVICE ----------------
+  - name: gen-ai-analytics-platform-html5-repo-runtime
+    # ------------------------------------------------------------
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service-plan: app-runtime
+      service-name: ${space}-gen-ai-analytics-platform-html5-repo-runtime
+      service: html5-apps-repo
+
+  # ------------------ HDI CONTAINER ---------------------------
+  - name: gen-ai-analytics-platform-hdi-container
+    # ------------------------------------------------------------
+    type: com.sap.xs.hdi-container
+    parameters:
+      service-name: ${space}-gen-ai-analytics-platform-hdi-container
+    properties:
+      com-container-name: "${service-name}"
