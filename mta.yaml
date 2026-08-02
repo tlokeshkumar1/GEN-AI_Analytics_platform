@@ -20,16 +20,20 @@ modules:
     build-parameters:
       builder: npm
       ignore: [".DS_Store", "node_modules/", "manifest*.yml"]
+      requires:
+        - name: gen-ai-analytics-platform-ui
+          artifacts:
+            - "*"
+          target-path: resources/
     parameters:
       buildpack: nodejs_buildpack
       app-name: gen-ai-analytics-platform-router-${space}
-      disk-quota: 256MB
-      memory: 128MB
+      disk-quota: 512MB
+      memory: 256MB
       keep-existing-routes: true
     requires:
       - name: gen-ai-analytics-platform-destination
       - name: gen-ai-analytics-platform-api
-      - name: gen-ai-analytics-platform-html5-repo-runtime
     provides:
       - name: gen-ai-analytics-platform-approuter
         properties:
@@ -41,9 +45,9 @@ modules:
   - name: gen-ai-analytics-platform-api
     # ------------------------------------------------------------
     type: python
-    path: ./backend/api
+    path: ./backend
     build-parameters:
-      ignore: [".DS_Store", "manifest*.yml", "node_modules/", "__pycache__/"]
+      ignore: [".DS_Store", "manifest*.yml", "node_modules/", "__pycache__/", "venv/", "db/", "preprocessing/"]
     parameters:
       buildpack: python_buildpack
       app-name: gen-ai-analytics-platform-api-${space}
@@ -90,7 +94,7 @@ modules:
   - name: gen-ai-analytics-platform-app-deployer
     # ------------------------------------------------------------
     type: com.sap.html5.application-content
-    path: ./frontend
+    path: ./app-deployer
     parameters:
       buildpack: nodejs_buildpack
       app-name: gen-ai-analytics-platform-app-deployer-${space}
