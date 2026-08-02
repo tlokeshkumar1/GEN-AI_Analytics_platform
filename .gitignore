@@ -1,34 +1,5 @@
-# Environment & secrets
 .env
-.env.*
-
-# Python
-venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# Node
-node_modules/
-dist/
-.npm
-
-# Excel / Office temp lock files (created when file is open)
-~$*
-*.tmp
-
-# Output / generated data files
-backend/preprocessing/output/
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# IDE
-.vscode/
-.idea/
-*.suo
-*.user
+node_modules
+venv
+__pycache__
+backend/preprocessing/output/~$SAC_Sales_Preprocessed.xlsx
