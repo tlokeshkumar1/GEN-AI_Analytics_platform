@@ -1,0 +1,11 @@
+{
+  "name": "gen-ai-analytics-platform-app-deployer",
+  "version": "1.0.0",
+  "description": "HTML5 App Deployer for GEN-AI Analytics Platform",
+  "scripts": {
+    "start": "node -e \"console.log('deployer')\""
+  },
+  "dependencies": {
+    "@sap/html5-app-deployer": "^3.0.0"
+  }
+}
