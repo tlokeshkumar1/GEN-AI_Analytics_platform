@@ -1,4 +1,34 @@
+# Environment & secrets
 .env
-node_modules
-venv
-__pycache__
+.env.*
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Node
+node_modules/
+dist/
+.npm
+
+# Excel / Office temp lock files (created when file is open)
+~$*
+*.tmp
+
+# Output / generated data files
+backend/preprocessing/output/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
