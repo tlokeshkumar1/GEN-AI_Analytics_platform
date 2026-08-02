@@ -18,8 +18,8 @@ class VectorService:
             }]
         return results
 
-    def add_document_vector(self, doc_id: str, text: str):
+    def add_document_vector(self, doc_id: str, text: str, metadata: Any = None):
         embedding = ai_core_service.generate_embedding(text)
-        vector_client.store_vector(doc_id, text, embedding)
+        vector_client.store_vector(doc_id, text, embedding, metadata)
 
 vector_service = VectorService()
