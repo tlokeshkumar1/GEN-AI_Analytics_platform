@@ -103,7 +103,13 @@ def load_from_sac(url: str, client_id: str, client_secret: str, model_id: str) -
 
 def process_and_upload(df: pd.DataFrame, source_name: str, sheet_name: str, batch_size: int):
     """Process a DataFrame, generate row text, generate embeddings, and upload to vector engine."""
+    if hasattr(vector_client, "_ensure_schema"):
+        try:
+            vector_client._ensure_schema()
+        except Exception as e:
+            logger.warning(f"Error executing schema verification: {e}")
     total_rows = len(df)
+
     if total_rows == 0:
         logger.warning(f"No rows to process for source: {source_name}, sheet: {sheet_name}")
         return
@@ -176,7 +182,7 @@ def process_and_upload(df: pd.DataFrame, source_name: str, sheet_name: str, batc
             # Upload to SAP HANA Cloud Vector Engine
             if hana_client:
                 # Use UPSERT to handle both insert and update
-                vector_str = f"'{embedding}'"
+                vector_str = str(embedding)
                 metadata_str = json.dumps(item["metadata"])
                 sql = """
                     UPSERT VECTOR_TABLE (ID, TEXT_CHUNK, EMBEDDING, METADATA)
