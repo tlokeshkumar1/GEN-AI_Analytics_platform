@@ -21,12 +21,13 @@ class HANAClient:
                 results = []
             conn.commit()
             cursor.close()
-            conn.close()
+            # Return connection to pool instead of closing
+            db_manager.return_connection(conn)
             return results
         except Exception as e:
             logger.error(f"Error executing SQL in HANA: {e}")
-            if conn:
-                conn.close()
+            # Return connection to pool even on error
+            db_manager.return_connection(conn)
             raise e
 
 hana_client = HANAClient()

@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     AICORE_RESOURCE_GROUP: str = os.getenv("AICORE_RESOURCE_GROUP", "default")
     AICORE_BASE_URL: str = os.getenv("AICORE_BASE_URL", "")
 
+    # NVIDIA API Configuration
+    NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
+    NVIDIA_EMBEDDING_MODEL: str = os.getenv("NVIDIA_EMBEDDING_MODEL", "nvidia/nemotron-3-embed-1b")
+    NVIDIA_API_URL: str = os.getenv("NVIDIA_API_URL", "https://integrate.api.nvidia.com/v1/embeddings")
+    NVIDIA_LLM_MODEL: str = os.getenv("NVIDIA_LLM_MODEL", "meta/llama-3.3-70b-instruct")
+    NVIDIA_LLM_URL: str = os.getenv("NVIDIA_LLM_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
+
+
     # SAP HANA Cloud Configuration (VCAP_SERVICES takes precedence on CF)
     HANA_ADDRESS: str = _vcap_hana.get("host") or os.getenv("HANA_ADDRESS", "localhost")
     HANA_PORT: int = _vcap_hana.get("port") or int(os.getenv("HANA_PORT", "443"))
