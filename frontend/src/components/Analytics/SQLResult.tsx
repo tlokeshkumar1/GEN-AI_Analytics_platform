@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Code2, Copy, Check } from 'lucide-react';
+import { Copy, Check, Terminal } from 'lucide-react';
 
 interface SQLResultProps {
   sql: string;
@@ -15,21 +15,30 @@ export const SQLResult: React.FC<SQLResultProps> = ({ sql }) => {
   };
 
   return (
-    <div className="bg-slate-900 text-slate-100 rounded-xl p-4 border border-slate-800 space-y-2 shadow-md">
-      <div className="flex items-center justify-between text-xs text-slate-300 border-b border-slate-800 pb-2">
+    <div className="bg-slate-900 text-slate-100 rounded-2xl p-4 sm:p-5 border border-slate-800 space-y-3 shadow-lg">
+      <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-3">
         <div className="flex items-center space-x-2 font-mono text-sky-400 font-semibold">
-          <Code2 className="w-4 h-4" />
-          <span>Generated SAP HANA SQL Query</span>
+          <Terminal className="w-4 h-4 text-sky-400" />
+          <span>SAP HANA SQL Synthesized Query</span>
         </div>
         <button
           onClick={handleCopy}
-          className="flex items-center space-x-1 text-[11px] text-slate-400 hover:text-sky-300 transition-colors"
+          className="flex items-center space-x-1.5 text-xs text-slate-400 hover:text-sky-300 bg-slate-800/80 hover:bg-slate-800 px-3 py-1 rounded-lg transition-colors border border-slate-700"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-          <span>{copied ? 'Copied' : 'Copy'}</span>
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-emerald-400">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy SQL</span>
+            </>
+          )}
         </button>
       </div>
-      <pre className="text-xs font-mono text-sky-300 overflow-x-auto p-2 bg-slate-950 rounded">
+      <pre className="text-xs font-mono text-sky-300 overflow-x-auto p-3 bg-slate-950 rounded-xl leading-relaxed border border-slate-800/80">
         <code>{sql}</code>
       </pre>
     </div>

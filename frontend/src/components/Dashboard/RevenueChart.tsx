@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from '../Common/Card';
 
 interface RevenueChartProps {
@@ -6,44 +6,144 @@ interface RevenueChartProps {
 }
 
 export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
-  const maxVal = Math.max(...data.map(d => d.revenue), 1);
+  const [selectedYear, setSelectedYear] = useState<string>('All');
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  // Extract unique years from data month labels if available, or default
+  const years = ['All', '2025', '2024', '2023'];
+
+  // Filter data based on selected year
+  const filteredData = React.useMemo(() => {
+    if (selectedYear === 'All') {
+      // If dataset has 36 months, show the last 12 or all with horizontal scroll
+      return data;
+    }
+    return data.filter((d) => d.month.includes(selectedYear));
+  }, [data, selectedYear]);
+
+  const maxVal = Math.max(...filteredData.map((d) => d.revenue), 1);
+  const totalRevenue = filteredData.reduce((acc, d) => acc + d.revenue, 0);
+  const totalProfit = filteredData.reduce((acc, d) => acc + d.profit, 0);
+  const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
   return (
-    <Card title="Monthly Revenue & Profit Trend" subtitle="Fiscal Year 2024 (USD)">
-      <div className="h-64 flex items-end justify-between gap-2 pt-6 pb-2">
-        {data.map((item, idx) => {
-          const heightPct = (item.revenue / maxVal) * 100;
-          const profitPct = (item.profit / maxVal) * 100;
-          return (
-            <div key={idx} className="flex-1 flex flex-col items-center gap-1 group relative">
-              <div className="w-full bg-slate-100 rounded-t-lg h-48 flex items-end justify-center p-1 relative border border-slate-200/60">
-                {/* Revenue Bar */}
-                <div
-                  style={{ height: `${heightPct}%` }}
-                  className="w-full bg-gradient-to-t from-sky-500 to-sky-400 rounded-t group-hover:brightness-110 transition-all relative shadow-xs"
-                >
-                  {/* Profit overlay */}
+    <Card
+      title="Monthly Net Revenue & Gross Profit"
+      subtitle="Enterprise sales trend over time"
+      action={
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {years.map((y) => (
+            <button
+              key={y}
+              onClick={() => setSelectedYear(y)}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
+                selectedYear === y
+                  ? 'bg-white text-sky-700 shadow-xs border border-slate-200/80'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {/* Metric summary ribbon */}
+      <div className="grid grid-cols-3 gap-3 mb-6 p-3 bg-slate-50/80 rounded-xl border border-slate-200/70 text-xs">
+        <div>
+          <span className="text-slate-400 font-medium">Period Revenue</span>
+          <p className="text-sm font-bold text-slate-800">
+            ${(totalRevenue / 1000000).toFixed(2)}M
+          </p>
+        </div>
+        <div>
+          <span className="text-slate-400 font-medium">Gross Profit</span>
+          <p className="text-sm font-bold text-indigo-600">
+            ${(totalProfit / 1000000).toFixed(2)}M
+          </p>
+        </div>
+        <div>
+          <span className="text-slate-400 font-medium">Avg Profit Margin</span>
+          <p className="text-sm font-bold text-emerald-600">
+            {avgMargin.toFixed(1)}%
+          </p>
+        </div>
+      </div>
+
+      {/* Interactive Chart Bars */}
+      <div className="overflow-x-auto pb-2">
+        <div
+          className="h-64 flex items-end justify-between gap-2 pt-8 pb-4 min-w-[500px]"
+          style={{ minWidth: filteredData.length > 16 ? `${filteredData.length * 32}px` : '100%' }}
+        >
+          {filteredData.map((item, idx) => {
+            const revHeight = (item.revenue / maxVal) * 100;
+            const profitHeight = (item.profit / maxVal) * 100;
+            const isHovered = hoveredIdx === idx;
+
+            return (
+              <div
+                key={idx}
+                className="flex-1 flex flex-col items-center gap-1.5 relative group cursor-pointer"
+                onMouseEnter={() => setHoveredIdx(idx)}
+                onMouseLeave={() => setHoveredIdx(null)}
+              >
+                {/* Floating Tooltip */}
+                {isHovered && (
+                  <div className="absolute -top-14 bg-slate-900 text-white text-[11px] p-2 rounded-xl shadow-xl z-30 pointer-events-none whitespace-nowrap border border-slate-700 animate-in fade-in duration-100">
+                    <div className="font-semibold text-slate-200 mb-0.5">{item.month}</div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sky-300 font-bold">
+                        Rev: ${(item.revenue / 1000000).toFixed(2)}M
+                      </span>
+                      <span className="text-indigo-300 font-bold">
+                        Profit: ${(item.profit / 1000000).toFixed(2)}M
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Dual Column Bars */}
+                <div className="w-full bg-slate-100/80 rounded-xl h-48 flex items-end justify-center gap-1 p-1 border border-slate-200/70 group-hover:border-sky-300 transition-all">
+                  {/* Revenue Bar */}
                   <div
-                    style={{ height: `${(profitPct / heightPct) * 100}%` }}
-                    className="w-full bg-gradient-to-t from-blue-600 to-indigo-500 rounded-t opacity-90"
+                    style={{ height: `${Math.max(revHeight, 4)}%` }}
+                    className="w-1/2 bg-gradient-to-t from-sky-600 via-sky-500 to-sky-400 rounded-t-md group-hover:brightness-110 transition-all shadow-xs"
+                  />
+                  {/* Profit Bar */}
+                  <div
+                    style={{ height: `${Math.max(profitHeight, 4)}%` }}
+                    className="w-1/2 bg-gradient-to-t from-indigo-700 via-indigo-600 to-indigo-500 rounded-t-md group-hover:brightness-110 transition-all shadow-xs"
                   />
                 </div>
-              </div>
 
-              {/* Tooltip */}
-              <div className="absolute -top-12 hidden group-hover:flex flex-col items-center bg-slate-900 border border-slate-700 text-[10px] p-2 rounded-lg z-20 shadow-xl whitespace-nowrap text-white">
-                <span className="text-sky-300 font-semibold">{item.month}: ${(item.revenue / 1000).toFixed(0)}K Rev</span>
-                <span className="text-indigo-300">${(item.profit / 1000).toFixed(0)}K Profit</span>
+                {/* X-axis Month Label */}
+                <span
+                  className={`text-[10px] font-medium transition-colors text-center truncate max-w-[60px] ${
+                    isHovered ? 'text-sky-700 font-bold' : 'text-slate-500'
+                  }`}
+                >
+                  {item.month.replace('202', "'2")}
+                </span>
               </div>
-
-              <span className="text-[11px] font-medium text-slate-600 mt-1">{item.month}</span>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-      <div className="flex justify-center space-x-6 text-xs text-slate-600 mt-4 border-t border-slate-100 pt-3 font-medium">
-        <span className="flex items-center"><span className="w-3 h-3 rounded bg-sky-400 mr-2"></span> Total Revenue</span>
-        <span className="flex items-center"><span className="w-3 h-3 rounded bg-indigo-500 mr-2"></span> Total Profit</span>
+
+      {/* Legend & Footnote */}
+      <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-500">
+        <div className="flex items-center space-x-6">
+          <span className="flex items-center font-medium">
+            <span className="w-3 h-3 rounded-md bg-gradient-to-tr from-sky-500 to-sky-400 mr-2 shadow-xs"></span>
+            Net Revenue ($)
+          </span>
+          <span className="flex items-center font-medium">
+            <span className="w-3 h-3 rounded-md bg-gradient-to-tr from-indigo-600 to-indigo-500 mr-2 shadow-xs"></span>
+            Gross Margin Profit ($)
+          </span>
+        </div>
+        <span className="text-[11px] text-slate-400 italic">Hover columns for granular figures</span>
       </div>
     </Card>
   );

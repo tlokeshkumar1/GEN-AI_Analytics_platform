@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from '../Common/Card';
 
 interface CountryChartProps {
@@ -6,24 +6,67 @@ interface CountryChartProps {
 }
 
 export const CountryChart: React.FC<CountryChartProps> = ({ data }) => {
-  const maxVal = Math.max(...data.map(d => d.revenue), 1);
+  const [showCount, setShowCount] = useState<number>(5);
+  const maxVal = Math.max(...data.map((d) => d.revenue), 1);
+  const displayedData = data.slice(0, showCount);
 
   return (
-    <Card title="Top Revenue by Country" subtitle="Primary geographic markets">
-      <div className="space-y-3 py-2">
-        {data.map((item, idx) => {
+    <Card
+      title="Top Revenue by Country"
+      subtitle="Leading geographic sales markets"
+      action={
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {[5, 10].map((count) => (
+            <button
+              key={count}
+              onClick={() => setShowCount(count)}
+              className={`px-2 py-0.5 text-[11px] font-semibold rounded-lg transition-all ${
+                showCount === count
+                  ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Top {count}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      <div className="space-y-3 py-1">
+        {displayedData.map((item, idx) => {
           const widthPct = (item.revenue / maxVal) * 100;
           return (
-            <div key={idx} className="flex items-center space-x-3 text-xs">
-              <span className="w-28 text-slate-700 font-medium truncate">{item.country}</span>
-              <div className="flex-1 bg-slate-100 rounded-lg h-5 relative overflow-hidden flex items-center px-2 border border-slate-200/80">
-                <div
-                  style={{ width: `${widthPct}%` }}
-                  className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-indigo-500 to-sky-500 rounded-lg transition-all"
-                />
-                <span className="relative z-10 font-bold text-white text-[11px] drop-shadow-xs">
-                  ${(item.revenue / 1000000).toFixed(2)}M
+            <div key={idx} className="space-y-1 group">
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <div className="flex items-center space-x-2 truncate">
+                  <span
+                    className={`w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center flex-shrink-0 ${
+                      idx === 0
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                        : idx === 1
+                        ? 'bg-slate-200 text-slate-700'
+                        : idx === 2
+                        ? 'bg-orange-100 text-orange-800'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span className="text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
+                    {item.country}
+                  </span>
+                </div>
+                <span className="text-indigo-600 font-bold ml-2 flex-shrink-0">
+                  ${(item.revenue / 1000000).toFixed(1)}M
                 </span>
+              </div>
+
+              {/* Bar */}
+              <div className="w-full bg-slate-100 rounded-lg h-2.5 overflow-hidden border border-slate-200/70 p-0.5">
+                <div
+                  style={{ width: `${Math.min(100, Math.max(widthPct, 4))}%` }}
+                  className="h-full bg-gradient-to-r from-indigo-500 via-sky-500 to-cyan-400 rounded-lg transition-all duration-500 group-hover:brightness-110 shadow-xs"
+                />
               </div>
             </div>
           );

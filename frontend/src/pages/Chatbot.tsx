@@ -1,6 +1,10 @@
 import React from 'react';
 import { ChatWindow } from '../components/Chatbot/ChatWindow';
 
-export const ChatbotPage: React.FC = () => {
-  return <ChatWindow />;
+interface ChatbotPageProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export const ChatbotPage: React.FC<ChatbotPageProps> = ({ onNavigate }) => {
+  return <ChatWindow onNavigate={onNavigate} />;
 };
