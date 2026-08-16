@@ -116,48 +116,48 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="glass-panel p-6 bg-gradient-to-r from-white via-sky-50/40 to-indigo-50/30 border border-slate-200">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="glass-panel p-4 sm:p-5 bg-gradient-to-r from-white via-sky-50/40 to-indigo-50/30 border border-slate-200">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700 uppercase tracking-wider">
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-100 text-sky-700 uppercase tracking-wider">
                 Enterprise Intelligence
               </span>
               <span className="text-[11px] text-slate-400">Fiscal Year 2023 - 2025</span>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 mt-1">
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 mt-0.5">
               Executive Sales & Analytics Dashboard
             </h1>
             <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
-              Real-time enterprise metrics & machine-learning projections powered by SAP HANA Cloud & SAP AI Core.
+              Real-time enterprise metrics & machine-learning projections.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap self-start sm:self-center">
             <button
               onClick={loadData}
               disabled={isRefreshing}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-2xs transition-all disabled:opacity-60"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-all disabled:opacity-60"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>{isRefreshing ? 'Syncing...' : 'Sync Data'}</span>
+              <span>{isRefreshing ? 'Syncing...' : 'Sync'}</span>
             </button>
 
             {onNavigate && (
               <>
                 <button
                   onClick={() => onNavigate('graph')}
-                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 rounded-xl shadow-sm shadow-sky-500/20 transition-all"
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 rounded-lg shadow-2xs transition-all"
                 >
                   <BarChart3 className="w-3.5 h-3.5" />
-                  <span>Custom AI Graph</span>
+                  <span>Custom Graph</span>
                 </button>
                 <button
                   onClick={() => onNavigate('chat')}
-                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 rounded-xl shadow-sm shadow-indigo-500/20 transition-all"
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 rounded-lg shadow-2xs transition-all"
                 >
                   <MessageSquareText className="w-3.5 h-3.5" />
-                  <span>RAG AI Chat</span>
+                  <span>RAG Chat</span>
                 </button>
               </>
             )}
