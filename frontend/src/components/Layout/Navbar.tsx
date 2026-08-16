@@ -24,8 +24,6 @@ export const Navbar: React.FC<NavbarProps> = ({ setActiveTab }) => {
         setActiveTab('graph');
       } else if (q.includes('chat') || q.includes('rag') || q.includes('ask')) {
         setActiveTab('chat');
-      } else if (q.includes('sql') || q.includes('query')) {
-        setActiveTab('analytics');
       } else {
         setActiveTab('dashboard');
       }
@@ -43,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({ setActiveTab }) => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
-            placeholder="Quick jump (e.g., 'Custom Graphs', 'RAG Chat', 'SQL Analytics')..."
+            placeholder="Quick jump (e.g., 'Custom Graphs', 'RAG Chat')..."
             className="w-full pl-9 pr-12 py-2 text-xs bg-slate-100/70 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 focus:bg-white transition-all"
           />
           <span className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-slate-200 text-[10px] font-mono text-slate-500">

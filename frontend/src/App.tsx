@@ -3,7 +3,6 @@ import { Layout } from './components/Layout/Layout';
 import { DashboardPage } from './pages/Dashboard';
 import { ChatbotPage } from './pages/Chatbot';
 import { CustomGraphPage } from './components/Graph/CustomGraphPage';
-import { AnalyticsPage } from './pages/Analytics';
 import { NotFoundPage } from './pages/NotFound';
 
 export const App: React.FC = () => {
@@ -17,8 +16,6 @@ export const App: React.FC = () => {
         return <CustomGraphPage />;
       case 'chat':
         return <ChatbotPage onNavigate={setActiveTab} />;
-      case 'analytics':
-        return <AnalyticsPage />;
       default:
         return <NotFoundPage />;
     }

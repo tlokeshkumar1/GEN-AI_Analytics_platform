@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   MessageSquareText,
   BarChart3,
-  Database,
   Sparkles,
   Cpu,
 } from 'lucide-react';
@@ -38,12 +37,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       icon: MessageSquareText,
       badge: 'GPT-4o',
       badgeColor: 'bg-indigo-100 text-indigo-700',
-    },
-    {
-      id: 'analytics',
-      label: 'Text-to-SQL Analytics',
-      subtitle: 'Dynamic Query Generator',
-      icon: Database,
     },
   ];
 
