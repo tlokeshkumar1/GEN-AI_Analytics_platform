@@ -186,7 +186,6 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
           .slice(1, -1)
           .split('|')
           .map((c) => c.trim());
-        // Check if row 2 is a separator like | :--- | :--- |
         const hasSep = tableLines[1].includes('---');
         const dataRows = (hasSep ? tableLines.slice(2) : tableLines.slice(1)).map((r) =>
           r
@@ -198,14 +197,14 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
         blocks.push(
           <div
             key={`table-${i}`}
-            className="my-3.5 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs"
+            className="my-2.5 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs"
           >
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full text-left border-collapse text-[11px]">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200/90 text-slate-800 uppercase tracking-wider font-bold text-[11px]">
+                  <tr className="bg-slate-50 border-b border-slate-200/90 text-slate-800 uppercase tracking-wider font-bold text-[10px]">
                     {headerRow.map((cell, cIdx) => (
-                      <th key={cIdx} className="px-3.5 py-2.5 font-bold text-slate-800">
+                      <th key={cIdx} className="px-2.5 py-1.5 font-bold text-slate-800">
                         {renderInline(cell)}
                       </th>
                     ))}
@@ -220,7 +219,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
                       {row.map((cell, cIdx) => (
                         <td
                           key={cIdx}
-                          className="px-3.5 py-2 text-slate-700 leading-relaxed font-normal"
+                          className="px-2.5 py-1.5 text-slate-700 leading-normal font-normal"
                         >
                           {renderInline(cell)}
                         </td>
@@ -247,9 +246,9 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
           blocks.push(
             <h1
               key={`h1-${i}`}
-              className="text-base sm:text-lg font-bold text-slate-900 mt-4 mb-2 pb-1.5 border-b border-slate-200/80 flex items-center gap-2"
+              className="text-sm font-bold text-slate-900 mt-2.5 mb-1 pb-1 border-b border-slate-200/80 flex items-center gap-1.5"
             >
-              <span className="w-1.5 h-4 rounded-full bg-indigo-600 inline-block"></span>
+              <span className="w-1.5 h-3.5 rounded-full bg-indigo-600 inline-block"></span>
               <span>{renderInline(text)}</span>
             </h1>
           );
@@ -257,9 +256,9 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
           blocks.push(
             <h2
               key={`h2-${i}`}
-              className="text-sm sm:text-base font-bold text-slate-900 mt-3.5 mb-1.5 flex items-center gap-2"
+              className="text-xs font-bold text-slate-900 mt-2 mb-1 flex items-center gap-1.5"
             >
-              <span className="w-1 h-3.5 rounded-full bg-sky-500 inline-block"></span>
+              <span className="w-1 h-3 rounded-full bg-sky-500 inline-block"></span>
               <span>{renderInline(text)}</span>
             </h2>
           );
@@ -267,7 +266,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
           blocks.push(
             <h3
               key={`h3-${i}`}
-              className="text-xs sm:text-sm font-bold text-slate-900 mt-3 mb-1 flex items-center gap-1.5"
+              className="text-xs font-semibold text-slate-800 mt-1.5 mb-0.5"
             >
               <span>{renderInline(text)}</span>
             </h3>
@@ -276,7 +275,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
           blocks.push(
             <h4
               key={`h4-${i}`}
-              className="text-xs font-bold text-slate-700 uppercase tracking-wider mt-2.5 mb-1"
+              className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mt-1.5 mb-0.5"
             >
               {renderInline(text)}
             </h4>
@@ -297,10 +296,10 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
       blocks.push(
         <blockquote
           key={`quote-${i}`}
-          className="border-l-3 border-indigo-500 bg-indigo-50/50 pl-3.5 pr-3 py-2 rounded-r-xl my-2.5 text-xs sm:text-sm text-slate-700 italic"
+          className="border-l-2 border-indigo-500 bg-indigo-50/50 pl-2.5 pr-2 py-1 rounded-r-lg my-1.5 text-xs text-slate-700 italic"
         >
           {quoteLines.map((ql, qIdx) => (
-            <p key={qIdx} className="mb-1 last:mb-0">
+            <p key={qIdx} className="mb-0.5 last:mb-0">
               {renderInline(ql)}
             </p>
           ))}
@@ -317,7 +316,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
         i++;
       }
       blocks.push(
-        <ul key={`ul-${i}`} className="list-disc pl-5 space-y-1.5 my-2 text-xs sm:text-sm text-slate-700">
+        <ul key={`ul-${i}`} className="list-disc pl-4 space-y-0.5 my-1 text-xs text-slate-700">
           {listItems.map((item, idx) => (
             <li key={idx} className="leading-relaxed pl-0.5">
               {renderInline(item)}
@@ -336,7 +335,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
         i++;
       }
       blocks.push(
-        <ol key={`ol-${i}`} className="list-decimal pl-5 space-y-1.5 my-2 text-xs sm:text-sm text-slate-700">
+        <ol key={`ol-${i}`} className="list-decimal pl-4 space-y-0.5 my-1 text-xs text-slate-700">
           {listItems.map((item, idx) => (
             <li key={idx} className="leading-relaxed pl-0.5">
               {renderInline(item)}
@@ -349,19 +348,19 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, isUse
 
     // 7. Horizontal Rule (--- or ***)
     if (/^[-*_]{3,}$/.test(trimmed)) {
-      blocks.push(<hr key={`hr-${i}`} className="my-3 border-slate-200/80" />);
+      blocks.push(<hr key={`hr-${i}`} className="my-2 border-slate-200" />);
       i++;
       continue;
     }
 
     // 8. Regular Paragraph
     blocks.push(
-      <p key={`p-${i}`} className="text-xs sm:text-sm text-slate-700 leading-relaxed mb-2 last:mb-0">
+      <p key={`p-${i}`} className="text-xs text-slate-700 leading-relaxed mb-1.5 last:mb-0">
         {renderInline(line)}
       </p>
     );
     i++;
   }
 
-  return <div className="prose-chat space-y-1">{blocks}</div>;
+  return <div className="prose-chat space-y-0.5">{blocks}</div>;
 };
