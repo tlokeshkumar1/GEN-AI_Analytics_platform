@@ -28,19 +28,9 @@ class DataService:
     def _load_data(self):
         """Load data from preprocessed Excel file."""
         try:
-            # Path to the preprocessed Excel file
-            base_dir = Path(__file__).resolve().parent.parent.parent.parent
-            excel_path = base_dir / "backend" / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx"
-            
-            if not excel_path.exists():
-                logger.error(f"Preprocessed Excel file not found at: {excel_path}")
-                self._df = pd.DataFrame()
-                return
-            
-            logger.info(f"Loading data from: {excel_path}")
-            self._df = pd.read_excel(excel_path)
-            logger.info(f"Data loaded successfully. Shape: {self._df.shape}")
-            
+            from api.services.excel_dataset_service import excel_dataset_service
+            self._df = excel_dataset_service.get_df()
+            logger.info(f"Data loaded successfully from excel_dataset_service. Shape: {self._df.shape}")
         except Exception as e:
             logger.error(f"Error loading data from Excel: {e}")
             self._df = pd.DataFrame()

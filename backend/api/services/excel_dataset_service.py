@@ -12,29 +12,36 @@ class ExcelDatasetService:
         # Base path pointing to preprocessing/output/SAC_Sales_Preprocessed.xlsx
         self._default_path = Path(__file__).resolve().parent.parent.parent / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx"
 
+    def _resolve_dataset_path(self) -> Path:
+        candidates = [
+            self._default_path,
+            Path(__file__).resolve().parent.parent.parent / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx",
+            Path.cwd() / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx",
+            Path.cwd() / "backend" / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return self._default_path
+
     def get_df(self) -> pd.DataFrame:
         if self._df is None:
-            if not self._default_path.exists():
-                # Fallback check for absolute path if needed
-                alt_path = Path(r"D:\Projects\New folder (3)\GEN-AI_Analytics_platform\backend\preprocessing\output\SAC_Sales_Preprocessed.xlsx")
-                if alt_path.exists():
-                    self._default_path = alt_path
-                else:
-                    logger.error(f"Excel dataset not found at {self._default_path}")
-                    raise FileNotFoundError(f"Dataset file not found at {self._default_path}")
+            resolved_path = self._resolve_dataset_path()
+            if not resolved_path.exists():
+                logger.error(f"Excel dataset not found at {resolved_path}")
+                raise FileNotFoundError(f"Dataset file not found at {resolved_path}")
             
+            self._default_path = resolved_path
             logger.info(f"Loading preprocessed Excel dataset from: {self._default_path}")
             self._df = pd.read_excel(self._default_path)
             logger.info(f"Dataset loaded successfully with shape {self._df.shape}")
         return self._df
 
+    def get_dataset_path(self) -> Path:
+        return self._resolve_dataset_path()
+
     def get_fast_dataset_path(self) -> Path:
-        pkl_path = self._default_path.with_suffix(".pkl")
-        if not pkl_path.exists():
-            df = self.get_df()
-            logger.info(f"Creating fast binary dataset cache: {pkl_path}")
-            df.to_pickle(pkl_path)
-        return pkl_path
+        return self._resolve_dataset_path()
 
     def parse_dataset(self, file_path: str) -> Dict[str, Any]:
         df = self.get_df()
