@@ -32,7 +32,7 @@ class RAGPipeline:
         if order_data:
             # Format order data into clean markdown cards and table
             revenue = order_data.get('NetRevenueUSD', 0)
-            cost = order_data.get('CostUSD', 0)
+            cost = order_data.get('TotalCostUSD', order_data.get('CostUSD', 0))
             margin = order_data.get('GrossMarginUSD', 0)
             margin_pct = order_data.get('GrossMarginPercent', 0)
             product = order_data.get('ProductName', order_data.get('Product', 'N/A'))
