@@ -58,6 +58,11 @@ modules:
       srvUrl: "https://${app-name}.${default-domain}"
       approuterUrl: ~{gen-ai-analytics-platform-approuter/app-url}
       appName: ~{gen-ai-analytics-platform-approuter/application}
+      NVIDIA_API_KEY: "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"
+      NVIDIA_EMBEDDING_MODEL: "nvidia/nemotron-3-embed-1b"
+      NVIDIA_API_URL: "https://integrate.api.nvidia.com/v1/embeddings"
+      NVIDIA_LLM_MODEL: "meta/llama-3.1-8b-instruct"
+      NVIDIA_LLM_URL: "https://integrate.api.nvidia.com/v1/chat/completions"
     provides:
       - name: gen-ai-analytics-platform-api-props
         properties:
