@@ -27,18 +27,69 @@ class RAGPipeline:
         return None
 
     def _get_exact_order_data(self, order_id: str) -> Dict[str, Any]:
-        """Get exact order data from DataService."""
+        """Get exact order data from DataService and format as an executive record."""
         order_data = data_service.get_order_details(order_id)
         if order_data:
-            # Format the order data as a readable response
-            formatted = f"Order Details for {order_id}:\n\n"
-            for key, value in order_data.items():
-                formatted += f"**{key}**: {value}\n"
+            # Format order data into clean markdown cards and table
+            revenue = order_data.get('NetRevenueUSD', 0)
+            cost = order_data.get('CostUSD', 0)
+            margin = order_data.get('GrossMarginUSD', 0)
+            margin_pct = order_data.get('GrossMarginPercent', 0)
+            product = order_data.get('ProductName', order_data.get('Product', 'N/A'))
+            category = order_data.get('Category', 'N/A')
+            sub_cat = order_data.get('SubCategory', 'N/A')
+            customer = order_data.get('CustomerName', order_data.get('Customer', 'N/A'))
+            country = order_data.get('Country', 'N/A')
+            region = order_data.get('Region', 'N/A')
+            date_val = order_data.get('OrderDate', order_data.get('Date', 'N/A'))
+            qty = order_data.get('Quantity', 1)
+            channel = order_data.get('SalesChannel', order_data.get('Channel', 'Direct'))
+
+            try:
+                rev_fmt = f"${float(revenue):,.2f}"
+            except Exception:
+                rev_fmt = f"${revenue}"
+
+            try:
+                cost_fmt = f"${float(cost):,.2f}"
+            except Exception:
+                cost_fmt = f"${cost}"
+
+            try:
+                margin_fmt = f"${float(margin):,.2f}"
+            except Exception:
+                margin_fmt = f"${margin}"
+
+            try:
+                margin_pct_fmt = f"{float(margin_pct):.1f}%"
+            except Exception:
+                margin_pct_fmt = f"{margin_pct}%"
+
+            formatted = (
+                f"### 📦 Order Record: **{order_id}**\n\n"
+                f"Here are the complete transaction details retrieved from the enterprise sales dataset:\n\n"
+                f"#### 📊 Financial Performance\n"
+                f"| Metric | Value |\n"
+                f"| :--- | :--- |\n"
+                f"| **Net Revenue** | **{rev_fmt}** |\n"
+                f"| **Cost of Goods** | {cost_fmt} |\n"
+                f"| **Gross Margin ($)** | **{margin_fmt}** |\n"
+                f"| **Gross Margin (%)** | **{margin_pct_fmt}** |\n\n"
+                f"#### 🛍️ Product & Order Metadata\n"
+                f"- **Product Name:** {product}\n"
+                f"- **Category / Sub-Category:** {category} › {sub_cat}\n"
+                f"- **Quantity Ordered:** {qty} units\n"
+                f"- **Customer:** {customer}\n"
+                f"- **Location:** {country} ({region})\n"
+                f"- **Order Date:** {date_val}\n"
+                f"- **Sales Channel:** {channel}\n"
+            )
+
             return {
                 "reply": formatted,
                 "sources": [{
                     "ID": order_id,
-                    "TEXT_CHUNK": formatted,
+                    "TEXT_CHUNK": f"Order {order_id}: Revenue={rev_fmt}, Margin={margin_pct_fmt}, Customer={customer}, Country={country}, Product={product}",
                     "SCORE": 1.0,
                     "METADATA": f'{{"source": "SAC_Sales_Preprocessed", "sheet": "Sheet1", "row_id": "{order_id}"}}'
                 }],
