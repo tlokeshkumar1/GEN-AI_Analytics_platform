@@ -98,7 +98,7 @@ class PythonGraphAgent:
 
     def _get_dataset_path(self) -> Path:
         try:
-            return excel_dataset_service.get_fast_dataset_path()
+            return excel_dataset_service.get_dataset_path()
         except Exception:
             return (
                 Path(__file__).resolve().parent.parent.parent

@@ -47,7 +47,7 @@ modules:
     type: python
     path: ./backend
     build-parameters:
-      ignore: [".DS_Store", "manifest*.yml", "node_modules/", "__pycache__/", "venv/", "db/", "preprocessing/"]
+      ignore: [".DS_Store", "manifest*.yml", "node_modules/", "__pycache__/", "venv/", "db/", "preprocessing/input/"]
     parameters:
       buildpack: python_buildpack
       app-name: gen-ai-analytics-platform-api-${space}
@@ -89,24 +89,6 @@ modules:
         - npm install
         - npm run build
       supported-platforms: []
-
-  # ------------------- HTML5 APP DEPLOYER ---------------------
-  - name: gen-ai-analytics-platform-app-deployer
-    # ------------------------------------------------------------
-    type: com.sap.html5.application-content
-    path: ./app-deployer
-    parameters:
-      buildpack: nodejs_buildpack
-      app-name: gen-ai-analytics-platform-app-deployer-${space}
-    build-parameters:
-      ignore: [".DS_Store", "node_modules/", "manifest*.yml"]
-      requires:
-        - name: gen-ai-analytics-platform-ui
-          artifacts:
-            - "*"
-          target-path: ./
-    requires:
-      - name: gen-ai-analytics-platform-html5-repo-host
 
   # --------------------- DB MODULE (HANA HDI) -----------------
   - name: gen-ai-analytics-platform-db-deployer
@@ -150,26 +132,6 @@ resources:
                 HTML5.DynamicDestination: true
                 HTML5.Timeout: 300000
                 forwardAuthToken: false
-
-  # ----------------- HTML REPO HOST SERVICE -------------------
-  - name: gen-ai-analytics-platform-html5-repo-host
-    # ------------------------------------------------------------
-    type: org.cloudfoundry.managed-service
-    parameters:
-      service-plan: app-host
-      service-name: ${space}-gen-ai-analytics-platform-html5-repo-host
-      service: html5-apps-repo
-      config:
-        sizeLimit: 2
-
-  # ----------------- HTML REPO RUNTIME SERVICE ----------------
-  - name: gen-ai-analytics-platform-html5-repo-runtime
-    # ------------------------------------------------------------
-    type: org.cloudfoundry.managed-service
-    parameters:
-      service-plan: app-runtime
-      service-name: ${space}-gen-ai-analytics-platform-html5-repo-runtime
-      service: html5-apps-repo
 
   # ------------------ HDI CONTAINER ---------------------------
   - name: gen-ai-analytics-platform-hdi-container
