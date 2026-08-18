@@ -95,21 +95,6 @@ modules:
         - npm run build
       supported-platforms: []
 
-  # --------------------- DB MODULE (HANA HDI) -----------------
-  - name: gen-ai-analytics-platform-db-deployer
-    # ------------------------------------------------------------
-    type: hdb
-    path: ./backend/db
-    build-parameters:
-      ignore: [".DS_Store", "node_modules/", "manifest*.yml"]
-    parameters:
-      buildpack: nodejs_buildpack
-      app-name: gen-ai-analytics-platform-db-deployer-${space}
-      memory: 256MB
-      disk-quota: 1024MB
-    requires:
-      - name: gen-ai-analytics-platform-hdi-container
-
 resources:
   # ----------------- DESTINATION SERVICE ----------------------
   - name: gen-ai-analytics-platform-destination
@@ -122,7 +107,6 @@ resources:
       service-name: ${space}-gen-ai-analytics-platform-destination
       service: destination
       config:
-        HTML5Runtime_enabled: true
         version: 1.0.0
         init_data:
           instance:
@@ -134,8 +118,6 @@ resources:
                 Type: HTTP
                 ProxyType: Internet
                 Authentication: NoAuthentication
-                HTML5.DynamicDestination: true
-                HTML5.Timeout: 300000
                 forwardAuthToken: false
 
   # ------------------ HDI CONTAINER ---------------------------
