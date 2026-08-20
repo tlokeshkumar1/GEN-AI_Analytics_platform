@@ -32,7 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     },
     {
       id: 'chat',
-      label: 'Production RAG Chat',
+      label: 'RAG Chat',
       subtitle: 'Vector Context + Visuals',
       icon: MessageSquareText,
       badge: 'GPT-4o',
