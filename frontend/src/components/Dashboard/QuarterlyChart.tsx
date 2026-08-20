@@ -22,6 +22,26 @@ export const QuarterlyChart: React.FC<QuarterlyChartProps> = ({ data }) => {
     1
   );
 
+  const totalTarget = filteredData.reduce((acc, d) => acc + d.target, 0);
+  const totalActual = filteredData.reduce((acc, d) => acc + d.actual, 0);
+  const overallRate = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
+  const hoveredItem = hoveredIdx !== null ? filteredData[hoveredIdx] : null;
+
+  const formatQuarterLabel = (quarterStr: string, isAll: boolean) => {
+    if (!isAll) {
+      return quarterStr.includes('Q') 
+        ? quarterStr.substring(quarterStr.indexOf('Q'), quarterStr.indexOf('Q') + 2) 
+        : quarterStr;
+    }
+    // For 'All' mode: format e.g. "2023 Q1" -> "Q1 '23"
+    const qMatch = quarterStr.match(/Q[1-4]/i);
+    const yMatch = quarterStr.match(/20\d{2}/);
+    if (qMatch && yMatch) {
+      return `${qMatch[0].toUpperCase()} '${yMatch[0].slice(2)}`;
+    }
+    return quarterStr;
+  };
+
   return (
     <Card
       title="Quarterly Targets vs Actual"
@@ -31,7 +51,10 @@ export const QuarterlyChart: React.FC<QuarterlyChartProps> = ({ data }) => {
           {years.map((y) => (
             <button
               key={y}
-              onClick={() => setSelectedYear(y)}
+              onClick={() => {
+                setSelectedYear(y);
+                setHoveredIdx(null);
+              }}
               className={`px-2 py-0.5 text-[11px] font-semibold rounded-lg transition-all ${
                 selectedYear === y
                   ? 'bg-white text-emerald-700 shadow-xs border border-slate-200/80'
@@ -44,88 +67,133 @@ export const QuarterlyChart: React.FC<QuarterlyChartProps> = ({ data }) => {
         </div>
       }
     >
-      <div className="space-y-4 pt-2">
-        <div className="h-48 flex items-end justify-around gap-2 pt-4">
-          {filteredData.map((item, idx) => {
-            const targetPct = (item.target / maxVal) * 100;
-            const actualPct = (item.actual / maxVal) * 100;
-            const achievementRate = item.target > 0 ? (item.actual / item.target) * 100 : 100;
-            const isExceeded = item.actual >= item.target;
-            const isHovered = hoveredIdx === idx;
+      <div className="space-y-3 pt-1">
+        {/* Interactive Stats Ribbon on Hover */}
+        <div className="grid grid-cols-3 gap-2 p-2.5 bg-slate-50/90 rounded-xl border border-slate-200/70 text-xs transition-colors">
+          <div>
+            <span className="text-slate-400 text-[10px] font-medium block">
+              {hoveredItem ? `${hoveredItem.quarter} Target` : 'Period Target'}
+            </span>
+            <p className="text-xs font-bold text-slate-700 font-mono">
+              ${((hoveredItem ? hoveredItem.target : totalTarget) / 1000000).toFixed(1)}M
+            </p>
+          </div>
+          <div>
+            <span className="text-slate-400 text-[10px] font-medium block">
+              {hoveredItem ? `${hoveredItem.quarter} Actual` : 'Period Actual'}
+            </span>
+            <p className="text-xs font-bold text-emerald-600 font-mono">
+              ${((hoveredItem ? hoveredItem.actual : totalActual) / 1000000).toFixed(1)}M
+            </p>
+          </div>
+          <div>
+            <span className="text-slate-400 text-[10px] font-medium block">
+              {hoveredItem ? 'Attainment' : 'Avg Attainment'}
+            </span>
+            <p
+              className={`text-xs font-bold font-mono ${
+                (hoveredItem
+                  ? hoveredItem.actual >= hoveredItem.target
+                  : overallRate >= 100)
+                  ? 'text-emerald-600'
+                  : 'text-amber-600'
+              }`}
+            >
+              {(hoveredItem
+                ? hoveredItem.target > 0
+                  ? (hoveredItem.actual / hoveredItem.target) * 100
+                  : 100
+                : overallRate
+              ).toFixed(1)}%
+            </p>
+          </div>
+        </div>
 
-            // Clean format: extract 'Q1', 'Q2', etc.
-            const quarterLabel = item.quarter.includes('Q') 
-              ? item.quarter.substring(item.quarter.indexOf('Q')) 
-              : item.quarter;
+        {/* Scrollable container for chart bars */}
+        <div className="overflow-x-auto pb-1">
+          <div
+            className="h-48 flex items-end justify-between gap-2.5 pt-4 pb-2"
+            style={{ minWidth: filteredData.length > 4 ? `${filteredData.length * 56}px` : '100%' }}
+          >
+            {filteredData.map((item, idx) => {
+              const targetPct = (item.target / maxVal) * 100;
+              const actualPct = (item.actual / maxVal) * 100;
+              const achievementRate = item.target > 0 ? (item.actual / item.target) * 100 : 100;
+              const isExceeded = item.actual >= item.target;
+              const isHovered = hoveredIdx === idx;
+              const quarterLabel = formatQuarterLabel(item.quarter, selectedYear === 'All');
 
-            return (
-              <div
-                key={idx}
-                className="flex-1 flex flex-col items-center gap-1.5 relative group cursor-pointer"
-                onMouseEnter={() => setHoveredIdx(idx)}
-                onMouseLeave={() => setHoveredIdx(null)}
-              >
-                {/* Tooltip */}
-                {isHovered && (
-                  <div className="absolute -top-14 bg-slate-900 text-white text-[11px] p-2 rounded-xl shadow-xl z-30 pointer-events-none whitespace-nowrap border border-slate-700 animate-in fade-in duration-100">
-                    <div className="font-semibold text-slate-200 mb-0.5">{item.quarter}</div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-slate-300">
-                        Target: ${(item.target / 1000000).toFixed(1)}M
-                      </span>
-                      <span className="text-emerald-300 font-bold">
-                        Actual: ${(item.actual / 1000000).toFixed(1)}M ({achievementRate.toFixed(1)}%)
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Bars Container */}
-                <div className="w-full flex items-end justify-center gap-1 h-36 bg-slate-50/80 p-1.5 rounded-xl border border-slate-200/80 group-hover:border-emerald-300 transition-all">
-                  {/* Target Column */}
-                  <div
-                    style={{ height: `${Math.max(targetPct, 5)}%` }}
-                    className="w-1/2 bg-slate-300 rounded-t-md transition-all group-hover:bg-slate-400"
-                    title={`Target: $${(item.target / 1000000).toFixed(1)}M`}
-                  />
-                  {/* Actual Column */}
-                  <div
-                    style={{ height: `${Math.max(actualPct, 5)}%` }}
-                    className={`w-1/2 rounded-t-md transition-all shadow-xs ${
-                      isExceeded
-                        ? 'bg-gradient-to-t from-emerald-600 to-teal-500 group-hover:brightness-110'
-                        : 'bg-gradient-to-t from-amber-600 to-amber-400'
-                    }`}
-                    title={`Actual: $${(item.actual / 1000000).toFixed(1)}M`}
-                  />
-                </div>
-
-                {/* Quarter Label & Achievement Badge */}
-                <span className="text-[11px] font-bold text-slate-700">
-                  {quarterLabel}
-                </span>
-                <span
-                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md ${
-                    isExceeded
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+              return (
+                <div
+                  key={idx}
+                  className={`flex-1 min-w-[44px] flex flex-col items-center justify-end gap-1.5 relative group cursor-pointer select-none transition-all duration-150 ${
+                    isHovered ? '-translate-y-1' : ''
                   }`}
+                  onMouseEnter={() => setHoveredIdx(idx)}
+                  onMouseLeave={() => setHoveredIdx(null)}
                 >
-                  {achievementRate.toFixed(0)}%
-                </span>
-              </div>
-            );
-          })}
+                  {/* Bars Container */}
+                  <div
+                    className={`w-full flex items-end justify-center gap-1 h-36 bg-slate-50/80 p-1.5 rounded-xl border transition-all duration-150 ${
+                      isHovered
+                        ? 'border-emerald-400 bg-emerald-50/30 shadow-md ring-2 ring-emerald-400/20'
+                        : 'border-slate-200/80 group-hover:border-slate-300'
+                    }`}
+                  >
+                    {/* Target Column */}
+                    <div
+                      style={{ height: `${Math.max(targetPct, 4)}%` }}
+                      className={`w-1/2 rounded-t-md transition-all ${
+                        isHovered ? 'bg-slate-400' : 'bg-slate-300'
+                      }`}
+                    />
+                    {/* Actual Column */}
+                    <div
+                      style={{ height: `${Math.max(actualPct, 4)}%` }}
+                      className={`w-1/2 rounded-t-md transition-all shadow-xs ${
+                        isExceeded
+                          ? 'bg-gradient-to-t from-emerald-600 to-teal-500'
+                          : 'bg-gradient-to-t from-amber-600 to-amber-400'
+                      } ${isHovered ? 'brightness-110 shadow-emerald-500/20' : ''}`}
+                    />
+                  </div>
+
+                  {/* Quarter Label & Achievement Badge */}
+                  <span
+                    className={`font-bold text-center whitespace-nowrap transition-colors ${
+                      isHovered ? 'text-emerald-700 font-extrabold' : 'text-slate-700'
+                    } ${selectedYear === 'All' ? 'text-[10px]' : 'text-[11px]'}`}
+                  >
+                    {quarterLabel}
+                  </span>
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md whitespace-nowrap transition-all ${
+                      isExceeded
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                    } ${isHovered ? 'scale-105 shadow-xs' : ''}`}
+                  >
+                    {achievementRate.toFixed(0)}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Legend */}
-        <div className="flex justify-center space-x-6 text-xs text-slate-600 pt-2 border-t border-slate-100 font-medium">
-          <span className="flex items-center">
-            <span className="w-3 h-3 rounded bg-slate-300 mr-1.5"></span> Target Budget
-          </span>
-          <span className="flex items-center">
-            <span className="w-3 h-3 rounded bg-gradient-to-tr from-emerald-600 to-teal-500 mr-1.5 shadow-xs"></span> Actual Realized
-          </span>
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500 font-medium">
+          <div className="flex items-center space-x-4">
+            <span className="flex items-center">
+              <span className="w-3 h-3 rounded bg-slate-300 mr-1.5"></span> Target Budget
+            </span>
+            <span className="flex items-center">
+              <span className="w-3 h-3 rounded bg-gradient-to-tr from-emerald-600 to-teal-500 mr-1.5 shadow-xs"></span> Actual Realized
+            </span>
+          </div>
+          {selectedYear === 'All' && (
+            <span className="text-[10px] text-slate-400 italic">↔ Scroll for all 12 quarters</span>
+          )}
         </div>
       </div>
     </Card>
