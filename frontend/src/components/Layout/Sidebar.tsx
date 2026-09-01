@@ -1,4 +1,5 @@
 import React from 'react';
+import logoImg from '../../assets/logo.png';
 import {
   LayoutDashboard,
   MessageSquareText,
@@ -91,6 +92,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       icon: Settings,
       badge: '→',
       badgeColor: 'bg-slate-100 text-slate-600',
+    },
+    {
+      id: 'graph',
+      label: 'Build Your KPI',
+      subtitle: 'AI Natural Language Charts',
+      icon: BarChart3,
+      badge: 'Agent',
+      badgeColor: 'bg-sky-100 text-sky-700',
     },
   ];
 
