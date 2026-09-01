@@ -12,7 +12,6 @@ import {
   Users,
   Settings,
 } from 'lucide-react';
-import logoImg from '../../assets/logo.png';
 
 interface SidebarProps {
   activeTab: string;
