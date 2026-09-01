@@ -116,12 +116,14 @@ class AICoreService:
             "Content-Type": "application/json"
         }
 
-        # Candidate models in priority order for low latency and high reliability
+        # Candidate models in priority order for active NVIDIA NIM endpoints
         candidate_models = [
-            settings.NVIDIA_LLM_MODEL or "meta/llama-3.1-8b-instruct",
-            "meta/llama-3.1-8b-instruct",
-            "mistralai/mistral-large-2-instruct",
-            "meta/llama-3.3-70b-instruct"
+            settings.NVIDIA_LLM_MODEL or "meta/llama-3.2-11b-vision-instruct",
+            "meta/llama-3.2-11b-vision-instruct",
+            "google/diffusiongemma-26b-a4b-it",
+            "nvidia/nemotron-3-super-120b-a12b",
+            "minimaxai/minimax-m3",
+            "poolside/laguna-xs-2.1"
         ]
         # Deduplicate while preserving order
         models_to_try = []

@@ -3,9 +3,15 @@ import {
   LayoutDashboard,
   MessageSquareText,
   BarChart3,
-  Sparkles,
   Cpu,
+  Compass,
+  Bell,
+  FileText,
+  Database,
+  Users,
+  Settings,
 } from 'lucide-react';
+import logoImg from '../../assets/logo.png';
 
 interface SidebarProps {
   activeTab: string;
@@ -23,20 +29,68 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       badgeColor: 'bg-emerald-100 text-emerald-700',
     },
     {
+      id: 'chat',
+      label: 'AI Dashboards',
+      subtitle: 'Vector Context + Visuals',
+      icon: MessageSquareText,
+      badge: 'Llama-3.3',
+      badgeColor: 'bg-indigo-100 text-indigo-700',
+    },
+    {
       id: 'graph',
-      label: 'Custom Graph Studio',
+      label: 'Build Your KPI',
       subtitle: 'AI Natural Language Charts',
       icon: BarChart3,
       badge: 'Agent',
       badgeColor: 'bg-sky-100 text-sky-700',
     },
     {
-      id: 'chat',
-      label: 'RAG Chat',
-      subtitle: 'Vector Context + Visuals',
-      icon: MessageSquareText,
-      badge: 'GPT-4o',
-      badgeColor: 'bg-indigo-100 text-indigo-700',
+      id: 'Data_Explorer',
+      label: 'Data Explorer',
+      subtitle: 'Drill Down & Insights',
+      icon: Compass,
+      badge: 'Insight',
+      badgeColor: 'bg-sky-100 text-sky-700',
+    },
+    {
+      id: 'Alerts',
+      label: 'Alerts & Notifications',
+      subtitle: 'Real-time Alerts',
+      icon: Bell,
+      badge: '12',
+      badgeColor: 'bg-rose-100 text-rose-700',
+    },
+    {
+      id: 'Reports Library',
+      label: 'Reports Library',
+      subtitle: 'Scheduled & On-demand',
+      icon: FileText,
+      badge: '24',
+      badgeColor: 'bg-amber-100 text-amber-700',
+    },
+    {
+      id: 'Data_Sources',
+      label: 'Data Sources',
+      subtitle: 'Manage',
+      icon: Database,
+      badge: '→',
+      badgeColor: 'bg-slate-100 text-slate-600',
+    },
+    {
+      id: 'User Management',
+      label: 'User Management',
+      subtitle: 'Roles & Permissions',
+      icon: Users,
+      badge: '→',
+      badgeColor: 'bg-slate-100 text-slate-600',
+    },
+    {
+      id: 'settings',
+      label: 'System Settings',
+      subtitle: 'Configuration & Security',
+      icon: Settings,
+      badge: '→',
+      badgeColor: 'bg-slate-100 text-slate-600',
     },
   ];
 
@@ -45,8 +99,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       <div className="space-y-6">
         {/* Brand Header */}
         <div className="flex items-center space-x-3 px-3.5 py-3 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-md shadow-slate-900/10">
-          <div className="p-2 bg-gradient-to-tr from-sky-500 to-blue-600 rounded-xl text-white shadow-sm flex-shrink-0">
-            <Sparkles className="w-5 h-5" />
+          <div className="p-1.5 bg-white/95 rounded-xl shadow-xs flex-shrink-0 flex items-center justify-center border border-white/20">
+            <img src={logoImg} alt="GEN-AI Platform Logo" className="w-7 h-7 object-contain" />
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
@@ -75,19 +129,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
                   key={item.id}
                   id={`nav-btn-${item.id}`}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full text-left flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-sky-50 text-sky-900 border border-sky-200/90 shadow-xs font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 border border-transparent'
-                  }`}
+                  className={`w-full text-left flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${isActive
+                    ? 'bg-sky-50 text-sky-900 border border-sky-200/90 shadow-xs font-semibold'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 border border-transparent'
+                    }`}
                 >
                   <div className="flex items-center space-x-3 min-w-0 flex-1 pr-1">
                     <div
-                      className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
-                        isActive
-                          ? 'bg-sky-500 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'
-                      }`}
+                      className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${isActive
+                        ? 'bg-sky-500 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'
+                        }`}
                     >
                       <Icon className="w-4 h-4" />
                     </div>
