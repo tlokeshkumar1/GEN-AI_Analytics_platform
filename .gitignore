@@ -6,4 +6,5 @@ backend/preprocessing/output/~$SAC_Sales_Preprocessed.xlsx
 frontend/dist/
 router/resources/assets/
 *.mtar
-mta_archives/
+mta_archives/
+mta.yaml
