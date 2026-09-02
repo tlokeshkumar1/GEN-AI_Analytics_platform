@@ -24,6 +24,10 @@ export const Navbar: React.FC<NavbarProps> = ({ setActiveTab }) => {
         setActiveTab('graph');
       } else if (q.includes('chat') || q.includes('rag') || q.includes('ask')) {
         setActiveTab('chat');
+      } else if (q.includes('upload') || q.includes('file') || q.includes('dataset') || q.includes('ingest')) {
+        setActiveTab('upload');
+      } else if (q.includes('explore') || q.includes('sql') || q.includes('analytics')) {
+        setActiveTab('Data_Explorer');
       } else {
         setActiveTab('dashboard');
       }

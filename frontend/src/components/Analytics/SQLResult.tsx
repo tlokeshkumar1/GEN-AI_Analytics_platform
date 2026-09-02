@@ -7,9 +7,10 @@ interface SQLResultProps {
 
 export const SQLResult: React.FC<SQLResultProps> = ({ sql }) => {
   const [copied, setCopied] = useState(false);
+  const displaySql = sql && sql.trim() ? sql : '-- null / empty SQL generated';
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(sql);
+    navigator.clipboard.writeText(displaySql);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -39,7 +40,7 @@ export const SQLResult: React.FC<SQLResultProps> = ({ sql }) => {
         </button>
       </div>
       <pre className="text-xs font-mono text-sky-300 overflow-x-auto p-3 bg-slate-950 rounded-xl leading-relaxed border border-slate-800/80">
-        <code>{sql}</code>
+        <code>{displaySql}</code>
       </pre>
     </div>
   );

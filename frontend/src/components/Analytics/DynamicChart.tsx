@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Card } from '../Common/Card';
+import { EmptyState } from '../Common/EmptyState';
 import { BarChart3, Table, ArrowUpDown } from 'lucide-react';
 
 interface DynamicChartProps {
@@ -12,16 +13,23 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({ data, recommendedCha
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortAsc, setSortAsc] = useState(false);
 
-  if (!data || data.length === 0) return null;
+  if (!data || data.length === 0) {
+    return (
+      <EmptyState
+        title="No Query Records Returned"
+        description="The backend executed the query successfully, but the result set contains 0 rows (empty dataset)."
+      />
+    );
+  }
 
-  const firstRow = data[0];
+  const firstRow = data[0] || {};
   const allKeys = Object.keys(firstRow);
-  const labelKey = allKeys[0];
+  const labelKey = allKeys[0] || 'Dimension';
   const numericKeys = allKeys.filter((k) => typeof firstRow[k] === 'number');
   const valueKey = numericKeys.length > 0 ? numericKeys[0] : allKeys[1] || allKeys[0];
 
   const maxVal = Math.max(
-    ...data.map((d) => Number(d[valueKey]) || 0),
+    ...data.map((d) => (typeof d[valueKey] === 'number' ? Number(d[valueKey]) : 0)),
     1
   );
 
@@ -29,6 +37,8 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({ data, recommendedCha
     if (!sortCol) return 0;
     const valA = a[sortCol];
     const valB = b[sortCol];
+    if (valA === null || valA === undefined) return sortAsc ? -1 : 1;
+    if (valB === null || valB === undefined) return sortAsc ? 1 : -1;
     if (typeof valA === 'number' && typeof valB === 'number') {
       return sortAsc ? valA - valB : valB - valA;
     }
@@ -44,6 +54,26 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({ data, recommendedCha
       setSortCol(col);
       setSortAsc(false);
     }
+  };
+
+  const renderCellValue = (val: any) => {
+    if (val === null || val === undefined) {
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-400 border border-slate-200/60">
+          null
+        </span>
+      );
+    }
+    if (val === '') {
+      return <span className="text-slate-400 italic text-[11px]">(empty)</span>;
+    }
+    if (typeof val === 'number') {
+      return <span className="font-mono text-slate-700">{val.toLocaleString()}</span>;
+    }
+    if (typeof val === 'boolean') {
+      return <span className="font-mono text-indigo-600">{val ? 'true' : 'false'}</span>;
+    }
+    return <span className="text-slate-800">{String(val)}</span>;
   };
 
   return (
@@ -80,29 +110,43 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({ data, recommendedCha
       {viewMode === 'chart' ? (
         <div className="space-y-3 py-2">
           {data.slice(0, 15).map((item, idx) => {
-            const val = Number(item[valueKey]) || 0;
+            const rawVal = item[valueKey];
+            const isNullVal = rawVal === null || rawVal === undefined;
+            const val = isNullVal ? 0 : Number(rawVal) || 0;
             const widthPct = (val / maxVal) * 100;
-            const isDollar = valueKey.toLowerCase().includes('usd') || valueKey.toLowerCase().includes('revenue') || valueKey.toLowerCase().includes('profit') || valueKey.toLowerCase().includes('margin');
+            const isDollar =
+              valueKey.toLowerCase().includes('usd') ||
+              valueKey.toLowerCase().includes('revenue') ||
+              valueKey.toLowerCase().includes('profit') ||
+              valueKey.toLowerCase().includes('margin');
 
             return (
               <div key={idx} className="space-y-1 group">
                 <div className="flex justify-between items-center text-xs font-semibold">
                   <span className="text-slate-800 truncate max-w-[60%] group-hover:text-sky-700 transition-colors">
-                    {String(item[labelKey])}
+                    {item[labelKey] === null || item[labelKey] === undefined
+                      ? 'null'
+                      : String(item[labelKey]) || '(empty)'}
                   </span>
                   <span className="text-sky-700 font-bold font-mono">
-                    {isDollar && val > 100000
-                      ? `$${(val / 1000000).toFixed(2)}M`
-                      : typeof val === 'number'
-                      ? val.toLocaleString()
-                      : val}
+                    {isNullVal ? (
+                      <span className="text-slate-400 font-normal italic">null</span>
+                    ) : isDollar && val > 100000 ? (
+                      `$${(val / 1000000).toFixed(2)}M`
+                    ) : typeof val === 'number' ? (
+                      val.toLocaleString()
+                    ) : (
+                      val
+                    )}
                   </span>
                 </div>
 
                 <div className="w-full bg-slate-100 rounded-lg h-3 overflow-hidden border border-slate-200/70 p-0.5">
                   <div
-                    style={{ width: `${Math.min(100, Math.max(widthPct, 3))}%` }}
-                    className="h-full bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 rounded-lg transition-all duration-500 group-hover:brightness-110 shadow-xs"
+                    style={{ width: `${isNullVal ? 0 : Math.min(100, Math.max(widthPct, 3))}%` }}
+                    className={`h-full rounded-lg transition-all duration-500 group-hover:brightness-110 shadow-xs ${
+                      isNullVal ? 'bg-slate-200' : 'bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600'
+                    }`}
                   />
                 </div>
               </div>
@@ -136,20 +180,11 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({ data, recommendedCha
             <tbody className="divide-y divide-slate-100">
               {sortedData.map((row, rowIdx) => (
                 <tr key={rowIdx} className="hover:bg-sky-50/50 transition-colors">
-                  {allKeys.map((k) => {
-                    const val = row[k];
-                    const isNum = typeof val === 'number';
-                    return (
-                      <td
-                        key={k}
-                        className={`py-2 px-3 ${
-                          isNum ? 'font-mono text-slate-700' : 'text-slate-800'
-                        }`}
-                      >
-                        {isNum ? val.toLocaleString() : String(val)}
-                      </td>
-                    );
-                  })}
+                  {allKeys.map((k) => (
+                    <td key={k} className="py-2 px-3">
+                      {renderCellValue(row[k])}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -159,3 +194,4 @@ export const DynamicChart: React.FC<DynamicChartProps> = ({ data, recommendedCha
     </Card>
   );
 };
+

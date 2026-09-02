@@ -42,6 +42,7 @@ class AnalyticsResponse(BaseModel):
 class UploadResponse(BaseModel):
     filename: str
     rows_processed: int
+    embeddings_generated: Optional[int] = 0
     status: str
     message: str
 

@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   MessageSquareText,
   BarChart3,
+  UploadCloud,
   Cpu,
   Compass,
   Bell,
@@ -45,6 +46,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       badgeColor: 'bg-sky-100 text-sky-700',
     },
     {
+      id: 'upload',
+      label: 'Upload Dataset',
+      subtitle: 'Excel & CSV Sync',
+      icon: UploadCloud,
+      badge: '',
+      badgeColor: 'bg-emerald-100 text-emerald-700',
+    },
+    {
       id: 'Data_Explorer',
       label: 'Data Explorer',
       subtitle: 'Drill Down & Insights',
@@ -57,7 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       label: 'Alerts & Notifications',
       subtitle: 'Real-time Alerts',
       icon: Bell,
-      badge: '12',
+      badge: '',
       badgeColor: 'bg-rose-100 text-rose-700',
     },
     {
@@ -65,7 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       label: 'Reports Library',
       subtitle: 'Scheduled & On-demand',
       icon: FileText,
-      badge: '24',
+      badge: '',
       badgeColor: 'bg-amber-100 text-amber-700',
     },
     {
@@ -91,14 +100,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       icon: Settings,
       badge: '→',
       badgeColor: 'bg-slate-100 text-slate-600',
-    },
-    {
-      id: 'graph',
-      label: 'Build Your KPI',
-      subtitle: 'AI Natural Language Charts',
-      icon: BarChart3,
-      badge: 'Agent',
-      badgeColor: 'bg-sky-100 text-sky-700',
     },
   ];
 
