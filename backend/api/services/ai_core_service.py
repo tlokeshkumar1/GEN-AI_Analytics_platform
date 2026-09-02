@@ -1,5 +1,5 @@
 import requests
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import threading
 import time
 from api.config import settings
@@ -97,18 +97,75 @@ class AICoreService:
 
         return "\n".join(summary)
 
-    def generate_completion(self, prompt: str) -> str:
-        """Generate a text completion using NVIDIA LLM API with multi-model fallback."""
+    def generate_aicore_completion(self, prompt: str) -> Optional[str]:
+        """
+        Generate completion using SAP AI Core Generative AI Hub deployment.
+        Dedicated for custom graph generation.
+        """
+        deploy_id = settings.AICORE_DEPLOYMENT_ID
+        deploy_url = settings.AICORE_DEPLOYMENT_URL
+        base_url = settings.AICORE_BASE_URL
+
+        if not (deploy_id or deploy_url) or not self.auth_url or not self.client_id:
+            logger.warning("[AI Core] Credentials or AICORE_DEPLOYMENT_ID not configured for Graph generation.")
+            return None
+
+        token = self.get_token()
+        if not token or token == "mock_token":
+            logger.warning("[AI Core] Valid OAuth token not available for SAP AI Core inference.")
+            return None
+
+        if deploy_url:
+            url = deploy_url
+            if "/chat/completions" not in url:
+                url = f"{url.rstrip('/')}/chat/completions?api-version=2024-02-01"
+        else:
+            url = f"{base_url.rstrip('/')}/inference/deployments/{deploy_id}/chat/completions?api-version=2024-02-01"
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "AI-Resource-Group": self.resource_group or "default",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.2,
+            "max_tokens": 1500
+        }
+
+        try:
+            logger.info(f"[AI Core] Sending graph code generation request to SAP AI Core: {url}")
+            res = requests.post(url, json=payload, headers=headers, timeout=30)
+            if res.status_code == 200:
+                data = res.json()
+                choices = data.get("choices", [])
+                if choices and "message" in choices[0]:
+                    content = choices[0]["message"].get("content", "")
+                    if content and content.strip():
+                        logger.info("[AI Core] Successfully received graph script from SAP AI Core")
+                        return content
+            else:
+                logger.warning(f"[AI Core] SAP AI Core returned status {res.status_code}: {res.text[:200]}")
+        except Exception as e:
+            logger.warning(f"[AI Core] SAP AI Core request failed: {e}")
+
+        return None
+
+    def generate_nvidia_completion(self, prompt: str) -> str:
+        """Generate text completion using NVIDIA NIM LLM API (dedicated for RAG Chat)."""
         api_key = settings.NVIDIA_API_KEY
         if not api_key:
-            logger.warning("NVIDIA API key not configured, returning smart fallback response")
+            logger.warning("NVIDIA API key not configured, returning smart fallback")
             return self._generate_smart_fallback(prompt)
 
         # Check completion cache
         cache_key = hash(prompt)
         with _cache_lock:
             if cache_key in _completion_cache:
-                logger.debug("Completion cache hit")
+                logger.debug("NVIDIA completion cache hit")
                 return _completion_cache[cache_key]
 
         headers = {
@@ -125,7 +182,6 @@ class AICoreService:
             "minimaxai/minimax-m3",
             "poolside/laguna-xs-2.1"
         ]
-        # Deduplicate while preserving order
         models_to_try = []
         for m in candidate_models:
             if m and m not in models_to_try:
@@ -143,7 +199,7 @@ class AICoreService:
                     settings.NVIDIA_LLM_URL,
                     json=payload,
                     headers=headers,
-                    timeout=15  # 15s timeout
+                    timeout=15
                 )
                 if res.status_code == 200:
                     data = res.json()
@@ -153,14 +209,18 @@ class AICoreService:
                             _completion_cache[cache_key] = result
                         return result
                 else:
-                    logger.warning(f"Model {model_name} returned status {res.status_code}: {res.text[:100]}")
+                    logger.warning(f"[NVIDIA RAG] Model {model_name} returned status {res.status_code}: {res.text[:100]}")
             except requests.exceptions.Timeout:
-                logger.warning(f"Model {model_name} timed out, trying next fallback...")
+                logger.warning(f"[NVIDIA RAG] Model {model_name} timed out, trying next fallback...")
             except Exception as e:
-                logger.warning(f"Model {model_name} failed ({e}), trying next fallback...")
+                logger.warning(f"[NVIDIA RAG] Model {model_name} failed ({e}), trying next fallback...")
 
-        logger.error("All NVIDIA LLM models failed or timed out; generating smart analytics fallback.")
+        logger.error("[NVIDIA RAG] All NVIDIA LLM models failed or timed out; generating smart analytics fallback.")
         return self._generate_smart_fallback(prompt)
+
+    def generate_completion(self, prompt: str) -> str:
+        """Standard completion for RAG chat and general queries (uses NVIDIA NIM)."""
+        return self.generate_nvidia_completion(prompt)
 
     def generate_embedding(self, text: str) -> List[float]:
         api_key = settings.NVIDIA_API_KEY

@@ -18,6 +18,7 @@ import re
 import sys
 import uuid
 import base64
+import tempfile
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -91,7 +92,7 @@ class PythonGraphAgent:
     """Orchestrates the full Custom Graph Generation lifecycle."""
 
     def __init__(self) -> None:
-        self.temp_dir: Path = Path(__file__).resolve().parent / "temp_scripts"
+        self.temp_dir: Path = Path(tempfile.gettempdir()) / "genai_graph_scripts"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     # ── Step 4: Dataset path & schema ─────────────────────────────────────────
@@ -253,14 +254,14 @@ Generate complete Python code only. No explanation."""
         if not fallback_mode:
             try:
                 system_prompt = self._build_system_prompt(prompt, clean_ds, clean_out)
-                raw = ai_core_service.generate_completion(system_prompt)
+                raw = ai_core_service.generate_aicore_completion(system_prompt)
                 if raw and not raw.startswith(("AI Insight", "Simulated Response")):
                     code = self._strip_markdown(raw)
                     if self._is_valid_code(code):
-                        logger.info("[Graph Agent] AI Core generated valid code.")
+                        logger.info("[Graph Agent] SAP AI Core generated valid code.")
                         return code
             except Exception as exc:
-                logger.warning(f"[Graph Agent] AI Core skipped: {exc}")
+                logger.warning(f"[Graph Agent] SAP AI Core skipped: {exc}")
 
         # ── Deterministic fallback ───────────────────────────────────────────
         chart_type = self._infer_chart_type(prompt)

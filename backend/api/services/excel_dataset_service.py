@@ -18,6 +18,9 @@ class ExcelDatasetService:
             Path(__file__).resolve().parent.parent.parent / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx",
             Path.cwd() / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx",
             Path.cwd() / "backend" / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx",
+            Path(__file__).resolve().parent.parent.parent / "preprocessing" / "input" / "SAC_Sales_Flat_SingleSheet.xlsx",
+            Path.cwd() / "preprocessing" / "input" / "SAC_Sales_Flat_SingleSheet.xlsx",
+            Path.cwd() / "backend" / "preprocessing" / "input" / "SAC_Sales_Flat_SingleSheet.xlsx",
         ]
         for candidate in candidates:
             if candidate.exists():

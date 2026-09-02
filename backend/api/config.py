@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     AICORE_CLIENT_SECRET: str = os.getenv("AICORE_CLIENT_SECRET", "")
     AICORE_RESOURCE_GROUP: str = os.getenv("AICORE_RESOURCE_GROUP", "default")
     AICORE_BASE_URL: str = os.getenv("AICORE_BASE_URL", "")
+    AICORE_DEPLOYMENT_ID: str = os.getenv("AICORE_DEPLOYMENT_ID", "")
+    AICORE_DEPLOYMENT_URL: str = os.getenv("AICORE_DEPLOYMENT_URL", "")
 
     # NVIDIA API Configuration
     NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
