@@ -35,15 +35,42 @@ def _get_hana_credentials_from_vcap():
         pass
     return {}
 
+def _get_aicore_credentials_from_vcap():
+    """Extract AI Core credentials from VCAP_SERVICES (CF environment)."""
+    vcap_services = os.getenv("VCAP_SERVICES")
+    if not vcap_services:
+        return {}
+    try:
+        services = json.loads(vcap_services)
+        aicore_services = services.get("aicore", [])
+        for svc in aicore_services:
+            creds = svc.get("credentials", {})
+            if creds.get("clientid"):
+                auth_url = creds.get("url", "")
+                if auth_url and not auth_url.endswith("/oauth/token"):
+                    auth_url = auth_url.rstrip("/") + "/oauth/token"
+                service_urls = creds.get("serviceurls", {})
+                base_url = service_urls.get("AI_API_URL", "")
+                return {
+                    "client_id": creds.get("clientid", ""),
+                    "client_secret": creds.get("clientsecret", ""),
+                    "auth_url": auth_url,
+                    "base_url": base_url
+                }
+    except Exception:
+        pass
+    return {}
+
 _vcap_hana = _get_hana_credentials_from_vcap()
+_vcap_aicore = _get_aicore_credentials_from_vcap()
 
 class Settings(BaseSettings):
     # SAP AI Core Configuration
-    AICORE_AUTH_URL: str = os.getenv("AICORE_AUTH_URL", "")
-    AICORE_CLIENT_ID: str = os.getenv("AICORE_CLIENT_ID", "")
-    AICORE_CLIENT_SECRET: str = os.getenv("AICORE_CLIENT_SECRET", "")
+    AICORE_AUTH_URL: str = _vcap_aicore.get("auth_url") or os.getenv("AICORE_AUTH_URL", "")
+    AICORE_CLIENT_ID: str = _vcap_aicore.get("client_id") or os.getenv("AICORE_CLIENT_ID", "")
+    AICORE_CLIENT_SECRET: str = _vcap_aicore.get("client_secret") or os.getenv("AICORE_CLIENT_SECRET", "")
     AICORE_RESOURCE_GROUP: str = os.getenv("AICORE_RESOURCE_GROUP", "default")
-    AICORE_BASE_URL: str = os.getenv("AICORE_BASE_URL", "")
+    AICORE_BASE_URL: str = _vcap_aicore.get("base_url") or os.getenv("AICORE_BASE_URL", "")
     AICORE_DEPLOYMENT_ID: str = os.getenv("AICORE_DEPLOYMENT_ID", "")
     AICORE_DEPLOYMENT_URL: str = os.getenv("AICORE_DEPLOYMENT_URL", "")
 
