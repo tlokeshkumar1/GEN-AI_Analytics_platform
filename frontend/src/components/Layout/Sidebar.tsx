@@ -109,11 +109,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         {/* Brand Header */}
         <div className="flex items-center space-x-3 px-3.5 py-3 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-md shadow-slate-900/10">
           <div className="p-1.5 bg-white/95 rounded-xl shadow-xs flex-shrink-0 flex items-center justify-center border border-white/20">
-            <img src={logoImg} alt="GEN-AI Platform Logo" className="w-7 h-7 object-contain" />
+            <img src={logoImg} alt="Neovatic GEN-AI platform Logo" className="w-7 h-7 object-contain" />
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
-              <span>GEN-AI Platform</span>
+              <span>NEOVATIC GEN-AI PLATFORM</span>
             </h1>
             <div className="flex items-center gap-1 mt-0.5">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>

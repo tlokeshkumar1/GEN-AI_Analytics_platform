@@ -15,7 +15,7 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({ status, result, 
     return (
       <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl flex items-center space-x-3 text-sky-800">
         <div className="w-5 h-5 border-2 border-sky-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-sm font-medium">Processing file & generating HANA vector embeddings...</span>
+        <span className="text-sm font-medium">Processing dataset, scanning for anomalies & synthesizing vector intelligence...</span>
       </div>
     );
   }
