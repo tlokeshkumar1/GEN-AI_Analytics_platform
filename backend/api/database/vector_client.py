@@ -51,19 +51,30 @@ class HANAVectorClient:
             _schema_initialized = True
 
 
-    def similarity_search(self, query_embedding: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
-        # Schema already initialized in __init__, no need to check again
-        # Uses SAP HANA Vector Engine COSINE_SIMILARITY
+    def similarity_search(self, query_embedding: List[float], top_k: int = 5, metadata_filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        # Uses SAP HANA Vector Engine COSINE_SIMILARITY with optional metadata filtering
         vector_str = f"'{query_embedding}'"
+        where_clause = ""
+        
+        if metadata_filters:
+            conditions = []
+            for k, v in metadata_filters.items():
+                if v:
+                    clean_val = str(v).replace("'", "''")
+                    conditions.append(f"LIKE(METADATA, '%\"{k}\": \"{clean_val}\"%')")
+            if conditions:
+                where_clause = "WHERE " + " AND ".join(conditions)
+
         sql = f"""
             SELECT TOP {top_k} ID, TEXT_CHUNK, METADATA, COSINE_SIMILARITY(EMBEDDING, TO_REAL_VECTOR({vector_str})) AS SCORE
             FROM VECTOR_TABLE
+            {where_clause}
             ORDER BY SCORE DESC
         """
         try:
             return hana_client.execute_query(sql)
         except Exception as e:
-            logger.warning(f"Vector search fallback to mock/empty due to DB state: {e}")
+            logger.warning(f"Vector search returned empty results due to DB state: {e}")
             return []
 
     def store_vector(self, doc_id: str, text_chunk: str, embedding: List[float], metadata: Optional[Any] = None):

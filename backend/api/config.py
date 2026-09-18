@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     PORT: int = int(os.getenv("PORT", "8000"))
 
+    # Data Freshness Settings
+    DATA_REFRESH_INTERVAL_MINUTES: int = int(os.getenv("DATA_REFRESH_INTERVAL_MINUTES", "15"))
+    DATA_STALE_MAX_HOURS: float = float(os.getenv("DATA_STALE_MAX_HOURS", "24"))
+
     class Config:
         case_sensitive = True
 

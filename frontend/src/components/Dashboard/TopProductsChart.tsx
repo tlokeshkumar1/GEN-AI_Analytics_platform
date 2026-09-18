@@ -21,7 +21,11 @@ export const TopProductsChart: React.FC<TopProductsChartProps> = ({ data }) => {
   return (
     <Card
       title="Top Performing Products Leaderboard"
-      subtitle="Highest revenue generators by unit volume & margin"
+      subtitle={
+        rawData.length > 0
+          ? `Showing ${filteredData.length} of ${rawData.length} ${rawData.length === 1 ? 'product' : 'products'} ranked by net revenue`
+          : "Highest revenue generators by unit volume & margin"
+      }
       action={
         <div className="relative w-48 sm:w-64">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -44,10 +48,10 @@ export const TopProductsChart: React.FC<TopProductsChartProps> = ({ data }) => {
           description="Product sales leaderboard is currently empty or loading from backend."
         />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[520px] overflow-y-auto border border-slate-100 rounded-xl">
           <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider bg-slate-50/70 text-[10px]">
+            <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 shadow-2xs">
+              <tr className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                 <th className="py-3 pl-4 w-12 text-center">Rank</th>
                 <th className="py-3 px-3">Product Name</th>
                 <th className="py-3 text-right px-4">Units Sold</th>
@@ -67,6 +71,12 @@ export const TopProductsChart: React.FC<TopProductsChartProps> = ({ data }) => {
                   const rev = item.revenue ?? 0;
                   const units = item.units ?? 0;
                   const barWidth = (rev / maxRevenue) * 100;
+                  const formattedRev =
+                    rev >= 1000000
+                      ? `$${(rev / 1000000).toFixed(2)}M`
+                      : rev >= 1000
+                      ? `$${(rev / 1000).toFixed(1)}K`
+                      : `$${rev.toLocaleString()}`;
 
                   return (
                     <tr
@@ -109,7 +119,7 @@ export const TopProductsChart: React.FC<TopProductsChartProps> = ({ data }) => {
 
                       {/* Revenue */}
                       <td className="py-3 text-right pr-4 font-bold text-sky-700 font-mono">
-                        ${(rev / 1000000).toFixed(2)}M
+                        {formattedRev}
                       </td>
 
                       {/* Visual Bar */}

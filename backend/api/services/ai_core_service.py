@@ -7,10 +7,6 @@ from api.utils.logger import get_logger
 
 logger = get_logger("services.ai_core_service")
 
-# In-memory caches to avoid repeated NVIDIA API calls
-_embedding_cache = {}
-_completion_cache = {}
-_cache_lock = threading.Lock()
 
 class AICoreService:
     def __init__(self):
@@ -20,11 +16,12 @@ class AICoreService:
         self.resource_group = settings.AICORE_RESOURCE_GROUP
         self.base_url = settings.AICORE_BASE_URL
         self.token = None
+        self.last_used_model: Optional[str] = None
 
-    def get_token(self) -> str:
+    def get_token(self) -> Optional[str]:
         if not self.auth_url or not self.client_id:
-            logger.warning("AICore credentials not configured, returning dummy token")
-            return "mock_token"
+            logger.error("AICore credentials not configured.")
+            return None
         
         try:
             response = requests.post(
@@ -38,7 +35,7 @@ class AICoreService:
             return self.token
         except Exception as e:
             logger.error(f"Failed to fetch SAP AI Core OAuth token: {e}")
-            return "mock_token"
+            return None
 
     def _request_with_retry(self, url: str, headers: dict, payload: dict, timeout: int, max_retries: int = 1) -> requests.Response:
         """Make HTTP request with exponential backoff retry."""
@@ -63,40 +60,6 @@ class AICoreService:
                 raise
         raise last_exception
 
-    def _generate_smart_fallback(self, prompt: str) -> str:
-        """Generate a structured, professional analytics fallback when LLM API is unavailable."""
-        user_query = ""
-        context_lines = []
-        if "User Question:" in prompt:
-            parts = prompt.split("User Question:")
-            if len(parts) > 1:
-                after_user = parts[1].split("Executive Response:")[0].strip()
-                user_query = after_user
-        if "Retrieved Context from SAP HANA Cloud:" in prompt:
-            ctx_part = prompt.split("Retrieved Context from SAP HANA Cloud:")[1].split("User Question:")[0].strip()
-            context_lines = [line.strip("- ") for line in ctx_part.splitlines() if line.strip() and not line.startswith("System:")]
-
-        if not user_query:
-            user_query = prompt[:100].strip()
-
-        summary = [
-            f"### 📊 Executive Analytics Insights",
-            f"**Query Analysis:** *{user_query}*",
-            "",
-            "#### 💡 Key Financial & Operational Takeaways",
-            "- **Revenue & Margin Drivers:** Profit margins are strongly influenced by high-value product categories (Power Tools, Safety & Industrial Equipment) and optimized direct sales channels.",
-            "- **Regional Dynamics:** European and North American markets demonstrate consistent ~45-55% gross margin contributions across enterprise customer tiers.",
-            "- **Volume & Discount Impact:** Transaction-level margins remain resilient with strategic price discipline across high-velocity product lines.",
-        ]
-
-        if context_lines:
-            summary.append("")
-            summary.append("#### 📑 Retrieved Context & Transaction Highlights")
-            for cl in context_lines[:4]:
-                summary.append(f"- {cl}")
-
-        return "\n".join(summary)
-
     def generate_aicore_completion(self, prompt: str) -> Optional[str]:
         """
         Generate completion using SAP AI Core Generative AI Hub deployment.
@@ -111,7 +74,7 @@ class AICoreService:
             return None
 
         token = self.get_token()
-        if not token or token == "mock_token":
+        if not token:
             logger.warning("[AI Core] Valid OAuth token not available for SAP AI Core inference.")
             return None
 
@@ -145,7 +108,8 @@ class AICoreService:
                 if choices and "message" in choices[0]:
                     content = choices[0]["message"].get("content", "")
                     if content and content.strip():
-                        logger.info("[AI Core] Successfully received graph script from SAP AI Core")
+                        self.last_used_model = f"sap-aicore-{deploy_id or 'default'}"
+                        logger.info(f"[AI Core] Successfully received graph script from SAP AI Core (model: {deploy_id or 'default'})")
                         return content
             else:
                 logger.warning(f"[AI Core] SAP AI Core returned status {res.status_code}: {res.text[:200]}")
@@ -158,15 +122,8 @@ class AICoreService:
         """Generate text completion using NVIDIA NIM LLM API (dedicated for RAG Chat)."""
         api_key = settings.NVIDIA_API_KEY
         if not api_key:
-            logger.warning("NVIDIA API key not configured, returning smart fallback")
-            return self._generate_smart_fallback(prompt)
-
-        # Check completion cache
-        cache_key = hash(prompt)
-        with _cache_lock:
-            if cache_key in _completion_cache:
-                logger.debug("NVIDIA completion cache hit")
-                return _completion_cache[cache_key]
+            logger.error("NVIDIA API key not configured")
+            raise RuntimeError("NVIDIA API key is not configured in environment settings.")
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -187,7 +144,7 @@ class AICoreService:
             if m and m not in models_to_try:
                 models_to_try.append(m)
 
-        for model_name in models_to_try:
+        for idx, model_name in enumerate(models_to_try):
             payload = {
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt}],
@@ -205,18 +162,22 @@ class AICoreService:
                     data = res.json()
                     result = data["choices"][0]["message"]["content"]
                     if result and result.strip():
-                        with _cache_lock:
-                            _completion_cache[cache_key] = result
+                        self.last_used_model = model_name
+                        if idx == 0:
+                            logger.info(f"[NVIDIA RAG] Model {model_name} completed successfully.")
+                        else:
+                            logger.info(f"[NVIDIA RAG] Fallback model {model_name} completed successfully.")
                         return result
-                else:
+
                     logger.warning(f"[NVIDIA RAG] Model {model_name} returned status {res.status_code}: {res.text[:100]}")
             except requests.exceptions.Timeout:
                 logger.warning(f"[NVIDIA RAG] Model {model_name} timed out, trying next fallback...")
             except Exception as e:
                 logger.warning(f"[NVIDIA RAG] Model {model_name} failed ({e}), trying next fallback...")
 
-        logger.error("[NVIDIA RAG] All NVIDIA LLM models failed or timed out; generating smart analytics fallback.")
-        return self._generate_smart_fallback(prompt)
+        self.last_used_model = None
+        logger.error("[NVIDIA RAG] All NVIDIA LLM models failed or timed out.")
+        raise RuntimeError("All NVIDIA LLM models failed or timed out.")
 
     def generate_completion(self, prompt: str) -> str:
         """Standard completion for RAG chat and general queries (uses NVIDIA NIM)."""
@@ -225,15 +186,8 @@ class AICoreService:
     def generate_embedding(self, text: str) -> List[float]:
         api_key = settings.NVIDIA_API_KEY
         if not api_key:
-            logger.warning("NVIDIA API key not configured, returning mock 1536-dim embedding")
-            return [0.01 * (i % 10) for i in range(1536)]
-
-        # Check cache first
-        cache_key = hash(text)
-        with _cache_lock:
-            if cache_key in _embedding_cache:
-                logger.debug("Embedding cache hit")
-                return _embedding_cache[cache_key]
+            logger.error("NVIDIA API key not configured")
+            raise RuntimeError("NVIDIA API key is not configured in environment settings.")
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -249,21 +203,16 @@ class AICoreService:
                 settings.NVIDIA_API_URL,
                 headers,
                 payload,
-                timeout=10,  # Reduced from 15s to 10s
+                timeout=10,
                 max_retries=2
             )
             embedding_2048 = res.json()["data"][0]["embedding"]
             # Slice to 1536 to match the HANA database column size (REAL_VECTOR(1536))
             embedding = embedding_2048[:1536]
-            
-            # Cache the result
-            with _cache_lock:
-                _embedding_cache[cache_key] = embedding
-            
             return embedding
         except Exception as e:
             logger.error(f"NVIDIA Embedding request failed: {e}")
-            return [0.01 * (i % 10) for i in range(1536)]
+            raise RuntimeError(f"NVIDIA Embedding request failed: {e}")
 
 
 ai_core_service = AICoreService()

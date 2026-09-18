@@ -10,7 +10,7 @@ try:
     HDBCLI_AVAILABLE = True
 except ImportError:
     HDBCLI_AVAILABLE = False
-    logger.warning("hdbcli module not available. HANA connection will operate in mock mode.")
+    logger.warning("hdbcli module not available. SAP HANA database integration is disabled.")
 
 class HANAConnectionManager:
     def __init__(self):

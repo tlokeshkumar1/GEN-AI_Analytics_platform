@@ -46,3 +46,32 @@ class UploadResponse(BaseModel):
     status: str
     message: str
 
+
+# ── Enhanced Response Models (v2) ─────────────────────────────────────────────
+
+class ProcessingStep(BaseModel):
+    """Represents a single backend processing stage for real-time UI feedback."""
+    stage: str       # "intent", "schema", "filter", "retrieval", "calculation", "validation", "generation"
+    status: str      # "running", "completed", "error", "skipped"
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
+class EnhancedChatResponse(BaseModel):
+    """
+    Structured response for the upgraded hybrid RAG + analytics pipeline.
+    Backward-compatible with ChatResponse fields.
+    """
+    type: str = "chat"           # "chat", "graph", "analytical", "error"
+    status: str = "success"      # "success", "error", "partial"
+    reply: str = ""
+    data: Optional[Dict[str, Any]] = None
+    processing: List[ProcessingStep] = []
+    sources: List[Dict[str, Any]] = []
+    graph_image: Optional[str] = None
+    chart_type: Optional[str] = None
+    insights: Optional[str] = None
+    intent: Optional[str] = None
+    query_plan: Optional[Dict[str, Any]] = None
+    records_matched: Optional[int] = None
+    session_id: str = "default"
+

@@ -41,7 +41,7 @@ export const RegionChart: React.FC<RegionChartProps> = ({ data }) => {
           {rawData.map((item, idx) => {
             const gradient = gradientColors[idx % gradientColors.length];
             const rev = item.revenue ?? 0;
-            const calculatedShare = item.share || (totalRev > 0 ? (rev / totalRev) * 100 : 0);
+            const calculatedShare = item.share ?? (totalRev > 0 ? (rev / totalRev) * 100 : 0);
 
             return (
               <div key={idx} className="space-y-1.5 group">

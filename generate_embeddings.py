@@ -26,12 +26,7 @@ except ImportError as e:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("generate_embeddings_cli")
     logger.error(f"Failed to import backend modules: {e}")
-    # Mock fallback classes for safety if executed in completely isolated env
-    class MockVectorClient:
-        def similarity_search(self, *args, **kwargs): return []
-        def store_vector(self, *args, **kwargs): pass
-    vector_client = MockVectorClient()
-    hana_client = None
+    raise ImportError(f"Backend modules could not be loaded: {e}")
 
 def detect_id_column(df: pd.DataFrame) -> str:
     """Dynamically scan columns to find the most probable unique identifier."""
@@ -66,12 +61,8 @@ def load_from_sac(url: str, client_id: str, client_secret: str, model_id: str) -
     """Fetch FactData from SAP Analytics Cloud Model API."""
     logger.info("Connecting to SAP Analytics Cloud...")
     if not url or not client_id or not client_secret or not model_id:
-        logger.warning("SAC configuration incomplete. Returning a simulated/mock SAC dataframe.")
-        return pd.DataFrame([
-            {"OrderID": 1001, "Customer": "ABC Ltd", "Product": "Laptop", "Region": "APAC", "SalesAmount": 50000},
-            {"OrderID": 1002, "Customer": "XYZ Corp", "Product": "Server", "Region": "EMEA", "SalesAmount": 120000},
-            {"OrderID": 1003, "Customer": "Global Tech", "Product": "Tablet", "Region": "AMER", "SalesAmount": 35000}
-        ])
+        logger.error("SAC configuration incomplete (missing sac-url, sac-client-id, sac-client-secret, or sac-model-id).")
+        raise ValueError("SAC configuration incomplete.")
     
     # 1. Obtain OAuth Token
     token_url = f"{url}/oauth/token"
@@ -101,8 +92,10 @@ def load_from_sac(url: str, client_id: str, client_secret: str, model_id: str) -
         logger.error(f"Failed to retrieve SAC fact data: {e}")
         raise e
 
+import hashlib
+
 def process_and_upload(df: pd.DataFrame, source_name: str, sheet_name: str, batch_size: int):
-    """Process a DataFrame, generate row text, generate embeddings, and upload to vector engine."""
+    """Process a DataFrame, generate row text with SHA256 hashing and enriched metadata, and upload to vector engine."""
     if hasattr(vector_client, "_ensure_schema"):
         try:
             vector_client._ensure_schema()
@@ -121,7 +114,7 @@ def process_and_upload(df: pd.DataFrame, source_name: str, sheet_name: str, batc
     else:
         logger.warning("No ID column detected. Falling back to row indices.")
 
-    # Prepare rows with target document IDs and textual representation
+    # Prepare rows with target document IDs, SHA256 content hash, and textual representation
     rows_to_process = []
     for idx, row in df.iterrows():
         # Clean ID
@@ -130,16 +123,26 @@ def process_and_upload(df: pd.DataFrame, source_name: str, sheet_name: str, batc
         doc_id = f"{source_name}_{sheet_name}_{row_id_val}".replace(" ", "_")
         
         row_text = format_row_to_text(row)
+        content_hash = hashlib.sha256(row_text.encode("utf-8")).hexdigest()
+
+        # Extract useful filter metadata
+        meta = {
+            "source": source_name,
+            "sheet": sheet_name,
+            "row_id": row_id_val,
+            "content_hash": content_hash,
+            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        for col_name in ["Country", "Region", "CustomerName", "Customer", "ProductName", "Product", "Category"]:
+            if col_name in row and pd.notna(row[col_name]):
+                meta[col_name.lower()] = str(row[col_name])
+
         rows_to_process.append({
             "doc_id": doc_id,
             "row_id_val": row_id_val,
             "text": row_text,
-            "metadata": {
-                "source": source_name,
-                "sheet": sheet_name,
-                "row_id": row_id_val,
-                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+            "content_hash": content_hash,
+            "metadata": meta
         })
 
     # Execute incremental updates in batches
@@ -151,23 +154,31 @@ def process_and_upload(df: pd.DataFrame, source_name: str, sheet_name: str, batc
         batch = rows_to_process[i * batch_size : (i + 1) * batch_size]
         batch_ids = [item["doc_id"] for item in batch]
         
-        # Check database for existing records
-        existing_texts = {}
+        # Check database for existing records & hashes
+        existing_hashes = {}
         if hana_client:
             try:
                 placeholders = ",".join(["?"] * len(batch_ids))
-                sql = f"SELECT ID, TEXT_CHUNK FROM VECTOR_TABLE WHERE ID IN ({placeholders})"
+                sql = f"SELECT ID, METADATA FROM VECTOR_TABLE WHERE ID IN ({placeholders})"
                 results = hana_client.execute_query(sql, tuple(batch_ids))
-                existing_texts = {r["ID"]: r["TEXT_CHUNK"] for r in results}
+                for r in results:
+                    meta_raw = r.get("METADATA")
+                    if meta_raw:
+                        try:
+                            m_dict = json.loads(meta_raw) if isinstance(meta_raw, str) else meta_raw
+                            existing_hashes[r["ID"]] = m_dict.get("content_hash")
+                        except Exception:
+                            pass
             except Exception as ex:
-                logger.warning(f"Could not query existing IDs from VECTOR_TABLE: {ex}. Doing insert/update.")
+                logger.warning(f"Could not query existing hashes from VECTOR_TABLE: {ex}. Doing insert/update.")
 
         for item in batch:
             doc_id = item["doc_id"]
             new_text = item["text"]
+            c_hash = item["content_hash"]
             
-            # Incremental Update Check
-            if doc_id in existing_texts and existing_texts[doc_id] == new_text:
+            # Incremental Update Check via SHA256 hash
+            if doc_id in existing_hashes and existing_hashes[doc_id] == c_hash:
                 skipped_count += 1
                 continue
 
@@ -195,8 +206,7 @@ def process_and_upload(df: pd.DataFrame, source_name: str, sheet_name: str, batc
                 except Exception as ex:
                     logger.error(f"Failed to upsert vector for {doc_id}: {ex}")
             else:
-                logger.info(f"[Mock Mode] Upserted vector for {doc_id}")
-                embedded_count += 1
+                logger.error("HANA vector client is not available. Cannot store vector.")
 
     logger.info(f"Sheet '{sheet_name}' complete. Embedded/Updated: {embedded_count}, Skipped (unchanged): {skipped_count}")
 

@@ -443,6 +443,16 @@ export const CustomGraphPage: React.FC = () => {
                           {badge.label}
                         </span>
                       )}
+                      {result.query_plan?.metric && (
+                        <span className="text-[9px] font-bold px-2 py-0.2 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          Metric: {result.query_plan.metric}
+                        </span>
+                      )}
+                      {result.records_matched !== undefined && (
+                        <span className="text-[9px] font-mono font-bold px-2 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {result.records_matched.toLocaleString()} records
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

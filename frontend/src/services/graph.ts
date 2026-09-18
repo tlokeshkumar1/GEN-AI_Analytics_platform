@@ -7,6 +7,8 @@ export interface GraphResponse {
   chart_type?: string;
   insights?: string;
   message: string;
+  records_matched?: number;
+  query_plan?: Record<string, any>;
 }
 
 export const generateCustomGraph = async (prompt: string): Promise<GraphResponse> => {

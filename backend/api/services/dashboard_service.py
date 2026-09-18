@@ -34,17 +34,28 @@ class DashboardService:
                 if "Year" in df.columns and "MonthNum" in df.columns:
                     sort_cols = ["Year", "MonthNum"]
                 elif "OrderDate" in df.columns:
-                    sort_cols = ["OrderDate"]
-                elif "MonthLabel" in df.columns:
-                    sort_cols = ["MonthLabel"]
+                    temp_df = df.copy()
+                    temp_df["_dt"] = pd.to_datetime(temp_df["OrderDate"], errors="coerce")
+                    temp_df = temp_df.dropna(subset=["_dt"])
+                    temp_df["_Year"] = temp_df["_dt"].dt.year
+                    temp_df["_Month"] = temp_df["_dt"].dt.month
+                    df = temp_df
+                    sort_cols = ["_Year", "_Month"]
 
                 if sort_cols:
+                    has_revenue = "NetRevenueUSD" in df.columns
+                    has_qty = "Quantity" in df.columns
+                    has_margin = "GrossMarginUSD" in df.columns
+                    has_country = "Country" in df.columns
+
                     periods = df.groupby(sort_cols).agg(
-                        revenue=("NetRevenueUSD", "sum") if "NetRevenueUSD" in df.columns else ("OrderID", "count"),
-                        quantity=("Quantity", "sum") if "Quantity" in df.columns else ("OrderID", "count"),
-                        margin=("GrossMarginPercent", "mean") if "GrossMarginPercent" in df.columns else ("OrderID", "count"),
-                        countries=("Country", "nunique") if "Country" in df.columns else ("OrderID", "count")
+                        revenue=("NetRevenueUSD", "sum") if has_revenue else ("OrderID", "count"),
+                        quantity=("Quantity", "sum") if has_qty else ("OrderID", "count"),
+                        margin_usd=("GrossMarginUSD", "sum") if has_margin else ("OrderID", "count"),
+                        countries=("Country", lambda x: x.dropna().astype(str).str.strip().loc[lambda s: s != ""].nunique()) if has_country else ("OrderID", "count")
                     ).reset_index()
+
+                    periods = periods.sort_values(sort_cols)
 
                     if len(periods) >= 2:
                         curr = periods.iloc[-1]
@@ -62,8 +73,10 @@ class DashboardService:
                             qty_change_str = f"{'+' if qty_diff > 0 else ''}{qty_diff:.1f}%"
                             qty_trend = "up" if qty_diff > 0 else ("down" if qty_diff < 0 else "neutral")
 
-                        # Margin change
-                        margin_diff = curr["margin"] - prev["margin"]
+                        # Margin change (weighted margin percentage difference)
+                        curr_margin_pct = (curr["margin_usd"] / curr["revenue"] * 100.0) if curr["revenue"] > 0 else 0.0
+                        prev_margin_pct = (prev["margin_usd"] / prev["revenue"] * 100.0) if prev["revenue"] > 0 else 0.0
+                        margin_diff = curr_margin_pct - prev_margin_pct
                         margin_change_str = f"{'+' if margin_diff > 0 else ''}{margin_diff:.1f}%"
                         margin_trend = "up" if margin_diff > 0 else ("down" if margin_diff < 0 else "neutral")
 

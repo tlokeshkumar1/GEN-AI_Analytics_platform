@@ -3,7 +3,7 @@ import './chat.css';
 import { ChatHistory, type ChatMessage } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { SuggestedQuestions } from './SuggestedQuestions';
-import { sendChatMessage } from '../../services/chatbot';
+import { sendChatMessageStream, type ProcessingStep } from '../../services/chatbot';
 import {
   Sparkles,
   Trash2,
@@ -32,6 +32,7 @@ Ask questions about sales revenue, margins, quarterly performance, or request cu
 
   const [messages, setMessages] = useState<ChatMessage[]>([initialWelcomeMessage]);
   const [loading, setLoading] = useState(false);
+  const [activeProcessingSteps, setActiveProcessingSteps] = useState<ProcessingStep[]>([]);
   const [sessionId] = useState(() => `rag-sess-${Math.random().toString(36).substring(2, 8)}`);
 
   const handleSend = async (text: string) => {
@@ -43,31 +44,52 @@ Ask questions about sales revenue, margins, quarterly performance, or request cu
     };
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
+    setActiveProcessingSteps([]);
 
-    try {
-      const res = await sendChatMessage(text, sessionId);
-      const botMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'bot',
-        text: res.reply,
-        sources: res.sources,
-        graph_image: res.graph_image,
-        chart_type: res.chart_type,
-        insights: res.insights,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, botMsg]);
-    } catch (err: any) {
-      const errorMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'bot',
-        text: `### ⚠️ Connection Notice\n\nUnable to retrieve data. Please ensure the backend server is running and try again.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
-      setLoading(false);
-    }
+    sendChatMessageStream(
+      text,
+      sessionId,
+      (step: ProcessingStep) => {
+        setActiveProcessingSteps((prev) => {
+          const existingIdx = prev.findIndex((s) => s.stage === step.stage);
+          if (existingIdx >= 0) {
+            const copy = [...prev];
+            copy[existingIdx] = step;
+            return copy;
+          }
+          return [...prev, step];
+        });
+      },
+      (res) => {
+        const botMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'bot',
+          text: res.reply,
+          sources: res.sources,
+          graph_image: res.graph_image,
+          chart_type: res.chart_type,
+          insights: res.insights,
+          processing: res.processing,
+          records_matched: res.records_matched,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, botMsg]);
+        setLoading(false);
+        setActiveProcessingSteps([]);
+      },
+      (err) => {
+        console.error('Chat error:', err);
+        const errorMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'bot',
+          text: `### ⚠️ Connection Notice\n\nUnable to retrieve data. Please ensure the backend server is running and try again.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, errorMsg]);
+        setLoading(false);
+        setActiveProcessingSteps([]);
+      }
+    );
   };
 
   const handleClearChat = () => {
@@ -155,6 +177,7 @@ Ask questions about sales revenue, margins, quarterly performance, or request cu
         <ChatHistory
           messages={messages}
           loading={loading}
+          activeProcessingSteps={activeProcessingSteps}
         />
         <SuggestedQuestions onSelect={handleSend} />
         <ChatInput onSend={handleSend} disabled={loading} />

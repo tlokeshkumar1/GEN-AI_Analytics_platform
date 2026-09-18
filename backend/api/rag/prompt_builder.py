@@ -4,6 +4,8 @@ import json
 class RAGPromptBuilder:
     def build_prompt(self, user_message: str, context_chunks: List[Dict[str, Any]]) -> str:
         formatted_chunks = []
+        has_calculated_data = False
+
         for c in context_chunks:
             text = c.get('TEXT_CHUNK', '')
             metadata_raw = c.get('METADATA')
@@ -16,13 +18,28 @@ class RAGPromptBuilder:
                         meta = metadata_raw
                     source = meta.get('source', '')
                     sheet = meta.get('sheet', '')
-                    if source or sheet:
+                    # Check if this is pre-calculated structured data
+                    if meta.get('type') == 'calculation' or source == 'structured_analytics':
+                        has_calculated_data = True
+                        meta_str = " [Source: Pre-calculated Analytics Data — AUTHORITATIVE]"
+                    elif source or sheet:
                         meta_str = f" [Source: {source or 'N/A'}, Sheet: {sheet or 'N/A'}]"
                 except Exception:
                     pass
             formatted_chunks.append(f"-{meta_str} {text}")
 
         context_str = "\n".join(formatted_chunks)
+
+        # Build anti-hallucination instructions based on whether calculated data is present
+        calc_instructions = ""
+        if has_calculated_data:
+            calc_instructions = """
+10. **CRITICAL — Pre-Calculated Data**: Some context below is marked as "Pre-calculated Analytics Data — AUTHORITATIVE".
+    These numbers were computed deterministically from the source dataset.
+    - Present these exact values as-is. Do NOT recalculate, round differently, or substitute them.
+    - If there is a discrepancy between pre-calculated data and vector-retrieved context, the pre-calculated data takes precedence.
+"""
+
         prompt = f"""You are an expert RAG (Retrieval-Augmented Generation) assistant and executive enterprise analytics AI.
 Your goal is to extract as much relevant and reliable information as possible from the retrieved knowledge base/context while maintaining 100% factual grounding.
 
@@ -40,7 +57,7 @@ Your goal is to extract as much relevant and reliable information as possible fr
    - Structure explanations using bold section headers (e.g., ### Key Insights, ### Performance Breakdown, ### Strategic Takeaways).
    - Use Markdown tables when presenting comparative figures, category breakdowns, or quarterly metrics.
    - Bold key metrics, monetary values, percentages, and entity names (e.g., **$14.2M**, **+18.4%**).
-
+{calc_instructions}
 RETRIEVED RAG CONTEXT:
 {context_str}
 
@@ -52,3 +69,4 @@ Executive Response:
         return prompt
 
 prompt_builder = RAGPromptBuilder()
+

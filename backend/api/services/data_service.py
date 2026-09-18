@@ -42,7 +42,7 @@ class DataService:
         return self._df
     
     def get_kpis(self) -> Dict[str, Any]:
-        """Calculate KPIs from the cached data."""
+        """Calculate KPIs from the cached data with weighted calculations."""
         df = self.get_dataframe()
         
         if df.empty:
@@ -55,16 +55,31 @@ class DataService:
             }
         
         try:
-            total_revenue = df["NetRevenueUSD"].sum()
-            total_quantity = df["Quantity"].sum()
-            avg_margin = df["GrossMarginPercent"].mean()
-            country_count = df["Country"].nunique()
+            total_revenue = float(df["NetRevenueUSD"].sum()) if "NetRevenueUSD" in df.columns else 0.0
+            total_quantity = int(df["Quantity"].sum()) if "Quantity" in df.columns else 0
+            
+            # Weighted Gross Margin Percentage = (Total Gross Margin USD / Total Net Revenue USD) * 100
+            if "GrossMarginUSD" in df.columns and "NetRevenueUSD" in df.columns and total_revenue > 0:
+                total_margin_usd = float(df["GrossMarginUSD"].sum())
+                avg_margin = (total_margin_usd / total_revenue) * 100.0
+            elif "GrossMarginPercent" in df.columns:
+                avg_margin = float(df["GrossMarginPercent"].mean())
+            else:
+                avg_margin = 0.0
+
+            # Valid non-empty active countries
+            if "Country" in df.columns:
+                clean_countries = df["Country"].dropna().astype(str).str.strip()
+                clean_countries = clean_countries[clean_countries != ""]
+                country_count = int(clean_countries.nunique())
+            else:
+                country_count = 0
             
             return {
-                "total_revenue": float(total_revenue),
-                "total_quantity": int(total_quantity),
+                "total_revenue": total_revenue,
+                "total_quantity": total_quantity,
                 "avg_margin": float(avg_margin),
-                "country_count": int(country_count)
+                "country_count": country_count
             }
         except Exception as e:
             logger.error(f"Error calculating KPIs: {e}")
@@ -76,27 +91,47 @@ class DataService:
             }
     
     def get_revenue_trend(self) -> List[Dict[str, Any]]:
-        """Get monthly revenue trend."""
+        """Get monthly revenue trend sorted strictly chronologically."""
         df = self.get_dataframe()
         
         if df.empty:
             return []
         
         try:
-            # Group by MonthLabel and calculate revenue and profit
-            trend = df.groupby("MonthLabel").agg(
-                revenue=("NetRevenueUSD", "sum"),
-                profit=("GrossMarginUSD", "sum")
-            ).reset_index()
+            has_revenue = "NetRevenueUSD" in df.columns
+            has_profit = "GrossMarginUSD" in df.columns
+
+            # Determine chronological sorting keys
+            if "Year" in df.columns and "MonthNum" in df.columns and "MonthLabel" in df.columns:
+                trend = df.groupby(["Year", "MonthNum", "MonthLabel"]).agg(
+                    revenue=("NetRevenueUSD", "sum") if has_revenue else ("OrderID", "count"),
+                    profit=("GrossMarginUSD", "sum") if has_profit else ("OrderID", "count")
+                ).reset_index()
+                trend = trend.sort_values(["Year", "MonthNum"])
+            elif "OrderDate" in df.columns:
+                temp_df = df.copy()
+                temp_df["_OrderDate_dt"] = pd.to_datetime(temp_df["OrderDate"], errors="coerce")
+                temp_df = temp_df.dropna(subset=["_OrderDate_dt"])
+                temp_df["_YearMonth"] = temp_df["_OrderDate_dt"].dt.to_period("M")
+                
+                trend = temp_df.groupby(["_YearMonth", "MonthLabel" if "MonthLabel" in temp_df.columns else "_YearMonth"]).agg(
+                    revenue=("NetRevenueUSD", "sum") if has_revenue else ("OrderID", "count"),
+                    profit=("GrossMarginUSD", "sum") if has_profit else ("OrderID", "count")
+                ).reset_index()
+                trend = trend.sort_values("_YearMonth")
+            elif "MonthLabel" in df.columns:
+                trend = df.groupby("MonthLabel").agg(
+                    revenue=("NetRevenueUSD", "sum") if has_revenue else ("OrderID", "count"),
+                    profit=("GrossMarginUSD", "sum") if has_profit else ("OrderID", "count")
+                ).reset_index()
+            else:
+                return []
             
-            # Sort by MonthLabel
-            trend = trend.sort_values("MonthLabel")
-            
-            # Format for frontend
             result = []
             for _, row in trend.iterrows():
+                month_str = str(row["MonthLabel"]) if "MonthLabel" in row else str(row.get("_YearMonth", ""))
                 result.append({
-                    "month": row["MonthLabel"],
+                    "month": month_str,
                     "revenue": float(row["revenue"]),
                     "profit": float(row["profit"])
                 })
@@ -107,24 +142,30 @@ class DataService:
             return []
     
     def get_region_breakdown(self) -> List[Dict[str, Any]]:
-        """Get revenue breakdown by region."""
+        """Get revenue breakdown by region with safe percentage shares."""
         df = self.get_dataframe()
         
-        if df.empty:
+        if df.empty or "Region" not in df.columns:
             return []
         
         try:
-            region_data = df.groupby("Region").agg(
-                revenue=("NetRevenueUSD", "sum")
+            region_df = df.copy()
+            region_df["Region"] = region_df["Region"].fillna("Unknown").astype(str).str.strip()
+            
+            region_data = region_df.groupby("Region").agg(
+                revenue=("NetRevenueUSD", "sum") if "NetRevenueUSD" in df.columns else ("OrderID", "count")
             ).reset_index()
             
             total_revenue = region_data["revenue"].sum()
-            region_data["share"] = (region_data["revenue"] / total_revenue * 100).round(1)
+            if total_revenue > 0:
+                region_data["share"] = (region_data["revenue"] / total_revenue * 100).round(1)
+            else:
+                region_data["share"] = 0.0
             
             result = []
             for _, row in region_data.iterrows():
                 result.append({
-                    "region": row["Region"],
+                    "region": str(row["Region"]),
                     "revenue": float(row["revenue"]),
                     "share": float(row["share"])
                 })
@@ -138,12 +179,15 @@ class DataService:
         """Get revenue breakdown by country."""
         df = self.get_dataframe()
         
-        if df.empty:
+        if df.empty or "Country" not in df.columns:
             return []
         
         try:
-            country_data = df.groupby("Country").agg(
-                revenue=("NetRevenueUSD", "sum")
+            country_df = df.copy()
+            country_df["Country"] = country_df["Country"].fillna("Unknown").astype(str).str.strip()
+            
+            country_data = country_df.groupby("Country").agg(
+                revenue=("NetRevenueUSD", "sum") if "NetRevenueUSD" in df.columns else ("OrderID", "count")
             ).reset_index()
             
             country_data = country_data.sort_values("revenue", ascending=False).head(10)
@@ -151,7 +195,7 @@ class DataService:
             result = []
             for _, row in country_data.iterrows():
                 result.append({
-                    "country": row["Country"],
+                    "country": str(row["Country"]),
                     "revenue": float(row["revenue"])
                 })
             
@@ -164,12 +208,15 @@ class DataService:
         """Get revenue breakdown by category."""
         df = self.get_dataframe()
         
-        if df.empty:
+        if df.empty or "Category" not in df.columns:
             return []
         
         try:
-            category_data = df.groupby("Category").agg(
-                revenue=("NetRevenueUSD", "sum")
+            cat_df = df.copy()
+            cat_df["Category"] = cat_df["Category"].fillna("Uncategorized").astype(str).str.strip()
+            
+            category_data = cat_df.groupby("Category").agg(
+                revenue=("NetRevenueUSD", "sum") if "NetRevenueUSD" in df.columns else ("OrderID", "count")
             ).reset_index()
             
             category_data = category_data.sort_values("revenue", ascending=False)
@@ -177,7 +224,7 @@ class DataService:
             result = []
             for _, row in category_data.iterrows():
                 result.append({
-                    "category": row["Category"],
+                    "category": str(row["Category"]),
                     "revenue": float(row["revenue"])
                 })
             
@@ -190,15 +237,15 @@ class DataService:
         """Get quarterly performance (target vs actual)."""
         df = self.get_dataframe()
         
-        if df.empty:
+        if df.empty or "Year" not in df.columns or "Quarter" not in df.columns:
             return []
         
         try:
             quarterly = df.groupby(["Year", "Quarter"]).agg(
-                actual=("NetRevenueUSD", "sum")
+                actual=("NetRevenueUSD", "sum") if "NetRevenueUSD" in df.columns else ("OrderID", "count")
             ).reset_index()
             
-            quarterly["quarter_label"] = quarterly["Year"].astype(str) + " " + quarterly["Quarter"]
+            quarterly["quarter_label"] = quarterly["Year"].astype(str) + " " + quarterly["Quarter"].astype(str)
             quarterly = quarterly.sort_values(["Year", "Quarter"])
             
             # Set target as 90% of actual for visualization
@@ -207,7 +254,7 @@ class DataService:
             result = []
             for _, row in quarterly.iterrows():
                 result.append({
-                    "quarter": row["quarter_label"],
+                    "quarter": str(row["quarter_label"]),
                     "target": float(row["target"]),
                     "actual": float(row["actual"])
                 })
@@ -217,25 +264,33 @@ class DataService:
             logger.error(f"Error getting quarterly performance: {e}")
             return []
     
-    def get_top_products(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_top_products(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get top products by revenue."""
         df = self.get_dataframe()
         
-        if df.empty:
+        if df.empty or "ProductName" not in df.columns:
             return []
         
         try:
-            product_data = df.groupby(["ProductID", "ProductName"]).agg(
-                units=("Quantity", "sum"),
-                revenue=("NetRevenueUSD", "sum")
+            prod_df = df.copy()
+            prod_df["ProductName"] = prod_df["ProductName"].fillna("Unknown Product").astype(str).str.strip()
+            group_cols = ["ProductName"]
+            if "ProductID" in prod_df.columns:
+                group_cols.insert(0, "ProductID")
+
+            product_data = prod_df.groupby(group_cols).agg(
+                units=("Quantity", "sum") if "Quantity" in df.columns else ("OrderID", "count"),
+                revenue=("NetRevenueUSD", "sum") if "NetRevenueUSD" in df.columns else ("OrderID", "count")
             ).reset_index()
             
-            product_data = product_data.sort_values("revenue", ascending=False).head(limit)
+            product_data = product_data.sort_values("revenue", ascending=False)
+            if limit is not None:
+                product_data = product_data.head(limit)
             
             result = []
             for _, row in product_data.iterrows():
                 result.append({
-                    "product": row["ProductName"],
+                    "product": str(row["ProductName"]),
                     "units": int(row["units"]),
                     "revenue": float(row["revenue"])
                 })

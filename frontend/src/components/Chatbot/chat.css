@@ -110,3 +110,29 @@
 .chat-message-entry {
   animation: message-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Pipeline Stage Entry Animation */
+@keyframes stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pipeline-stage-entry {
+  animation: stage-in 0.15s ease-out forwards;
+}
+
+/* Running stage subtle pulse */
+@keyframes stage-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.pipeline-stage-running {
+  animation: stage-pulse 1.5s ease-in-out infinite;
+}

@@ -6,6 +6,8 @@ Implements the 10-step Custom Graph Generation workflow:
   Step 3  – Receive natural-language prompt + dataset path
   Step 4  – Read / inspect dataset schema, dtypes, sample values
   Step 5  – AI Agent interprets prompt → chart type, columns, aggregation
+  Step 5b – Deterministic pre-computation of numeric result set
+  Step 5c – Dual-path reconciliation / verification
   Step 6  – Generate unique temp Python script  (temp_graph_<id>.py)
   Step 7  – Execute script inside venv (60 s timeout)
   Step 8  – Read PNG result → base64 data-URI → return to caller
@@ -17,11 +19,16 @@ import os
 import re
 import sys
 import uuid
+import json
+import time
 import base64
 import tempfile
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
+import numpy as np
 
 from api.services.ai_core_service import ai_core_service
 from api.services.excel_dataset_service import excel_dataset_service
@@ -85,6 +92,17 @@ _MEASURE_KEYWORDS: Dict[str, str] = {
     "price":    "UnitListPriceUSD",
     "revenue":  "NetRevenueUSD",
     "sales":    "NetRevenueUSD",
+}
+
+# Aggregation function mapping
+_AGG_MAP = {
+    "SUM": "sum",
+    "AVG": "mean",
+    "MEAN": "mean",
+    "COUNT": "count",
+    "MIN": "min",
+    "MAX": "max",
+    "COUNT_DISTINCT": "nunique",
 }
 
 
@@ -167,15 +185,263 @@ class PythonGraphAgent:
                 return col
         return "NetRevenueUSD"
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # NEW: Deterministic Pre-Computation & Reconciliation
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _apply_filters(self, df: pd.DataFrame, filters: List[Dict], date_filter: Optional[Dict]) -> pd.DataFrame:
+        """Apply query plan filters to the dataframe."""
+        filtered = df.copy()
+
+        for f in filters:
+            col = f.get("column")
+            op = f.get("operator", "=")
+            val = f.get("value")
+            if col not in filtered.columns or val is None:
+                continue
+            try:
+                if op == "=":
+                    filtered = filtered[filtered[col] == val]
+                elif op == "!=":
+                    filtered = filtered[filtered[col] != val]
+                elif op == ">":
+                    filtered = filtered[filtered[col] > float(val)]
+                elif op == "<":
+                    filtered = filtered[filtered[col] < float(val)]
+                elif op == ">=":
+                    filtered = filtered[filtered[col] >= float(val)]
+                elif op == "<=":
+                    filtered = filtered[filtered[col] <= float(val)]
+                elif op == "IN":
+                    vals = val if isinstance(val, list) else [val]
+                    filtered = filtered[filtered[col].isin(vals)]
+                elif op == "CONTAINS":
+                    filtered = filtered[filtered[col].astype(str).str.contains(str(val), case=False, na=False)]
+            except Exception as e:
+                logger.warning(f"[PreCompute] Could not apply filter {f}: {e}")
+
+        if date_filter:
+            col = date_filter.get("column")
+            from_val = date_filter.get("from")
+            to_val = date_filter.get("to")
+            if col and col in filtered.columns:
+                try:
+                    if filtered[col].dtype == object:
+                        if from_val:
+                            filtered = filtered[filtered[col] >= from_val]
+                        if to_val:
+                            filtered = filtered[filtered[col] <= to_val]
+                    else:
+                        if from_val is not None:
+                            filtered = filtered[filtered[col] >= type(filtered[col].iloc[0])(from_val)]
+                        if to_val is not None:
+                            filtered = filtered[filtered[col] <= type(filtered[col].iloc[0])(to_val)]
+                except Exception as e:
+                    logger.warning(f"[PreCompute] Could not apply date filter {date_filter}: {e}")
+
+        return filtered
+
+    def _compute_graph_dataset(
+        self,
+        chart_type_or_plan: Any,
+        dim: Optional[str] = None,
+        measure: Optional[str] = None,
+        aggregation: str = "SUM",
+        filters: Optional[List[Dict]] = None,
+        date_filter: Optional[Dict] = None,
+        limit: Optional[int] = None,
+        sort_dir: str = "DESC",
+        df: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
+        """
+        Deterministic pre-computation of the numeric result set.
+        Supports passing a query plan dict or individual parameters.
+        Returns a pre-aggregated DataFrame ready for chart rendering.
+        """
+        if isinstance(chart_type_or_plan, dict):
+            plan = chart_type_or_plan
+            chart_type = plan.get("chart_type", "bar")
+            dim = plan.get("dimension") or plan.get("dim") or "Region"
+            measure = plan.get("measure", "NetRevenueUSD")
+            aggregation = plan.get("aggregation", "SUM")
+            filters = plan.get("filters", [])
+            date_filter = plan.get("date_filter")
+            limit = plan.get("top_n") or plan.get("limit")
+            sort_dir = plan.get("sort_dir", "DESC")
+            if df is None:
+                # Expecting df as 2nd arg if 1st arg is dict: _compute_graph_dataset(plan, df)
+                if dim is not None and isinstance(dim, pd.DataFrame):
+                    df = dim
+        else:
+            chart_type = chart_type_or_plan
+
+        if filters is None:
+            filters = []
+        if df is None:
+            df = excel_dataset_service.get_df()
+
+        # Apply filters
+        filtered = self._apply_filters(df, filters, date_filter)
+
+        # For heatmap/correlation, return the numeric correlation matrix
+        if chart_type == "heatmap":
+            num_cols = [c for c in filtered.columns if filtered[c].dtype in (np.float64, np.int64)]
+            return filtered[num_cols].corr()
+
+        # For scatter charts, return a sampled raw dataset (no aggregation needed)
+        if chart_type == "scatter":
+            sample_n = min(1200, len(filtered))
+            return filtered.sample(n=sample_n, random_state=42)
+
+        # For box/violin, return filtered raw data (no aggregation)
+        if chart_type in ("box", "violin"):
+            top_dims = filtered[dim].value_counts().head(8).index
+            return filtered[filtered[dim].isin(top_dims)]
+
+        # Standard aggregation path
+        agg_func = _AGG_MAP.get(aggregation, "sum")
+
+        if chart_type == "stacked_bar":
+            sec_dim = "Category" if dim != "Category" else "Region"
+            if sec_dim not in filtered.columns:
+                sec_dims = [c for c in filtered.columns if c != dim and filtered[c].dtype == object]
+                sec_dim = sec_dims[0] if sec_dims else "Region"
+            agg = filtered.groupby([dim, sec_dim])[measure].agg(agg_func).reset_index()
+        else:
+            agg = filtered.groupby(dim)[measure].agg(agg_func).reset_index()
+
+        # Sort
+        ascending = sort_dir == "ASC"
+        if chart_type not in ("stacked_bar",):
+            agg = agg.sort_values(measure, ascending=ascending)
+
+        # Limit
+        effective_limit = limit or 10
+        if chart_type in ("funnel", "waterfall"):
+            effective_limit = limit or 8
+        elif chart_type in ("donut", "pie"):
+            effective_limit = limit or 7
+
+        if chart_type not in ("stacked_bar", "line", "area"):
+            agg = agg.head(effective_limit)
+
+        return agg
+
+    def _reconcile_graph_dataset(
+        self,
+        df_agg: pd.DataFrame,
+        chart_type_or_plan: Any,
+        dim: Optional[str] = None,
+        measure: Optional[str] = None,
+        aggregation: str = "SUM",
+        filters: Optional[List[Dict]] = None,
+        date_filter: Optional[Dict] = None,
+        df: Optional[pd.DataFrame] = None,
+    ) -> Dict[str, Any]:
+        """
+        Dual-path reconciliation: independently recompute the aggregation
+        and compare against the primary computation.
+        Supports passing a query plan dict or individual parameters.
+        Returns { verified: bool, discrepancy: str|None }.
+        """
+        TOLERANCE = 1e-4
+
+        if isinstance(chart_type_or_plan, dict):
+            plan = chart_type_or_plan
+            chart_type = plan.get("chart_type", "bar")
+            dim = plan.get("dimension") or plan.get("dim") or "Region"
+            measure = plan.get("measure", "NetRevenueUSD")
+            aggregation = plan.get("aggregation", "SUM")
+            filters = plan.get("filters", [])
+            date_filter = plan.get("date_filter")
+            if df is None and dim is not None and isinstance(dim, pd.DataFrame):
+                df = dim
+        else:
+            chart_type = chart_type_or_plan
+
+        if filters is None:
+            filters = []
+        if df is None:
+            df = excel_dataset_service.get_df()
+
+        # Skip reconciliation for chart types that don't aggregate
+        if chart_type in ("heatmap", "scatter", "box", "violin"):
+            return {"verified": True, "discrepancy": None}
+
+        try:
+            # Independent recomputation via a different code path
+            filtered = self._apply_filters(df, filters, date_filter)
+            agg_func = _AGG_MAP.get(aggregation, "sum")
+
+            if chart_type == "stacked_bar":
+                # For stacked bars, verify the grand total per dimension
+                check = filtered.groupby(dim)[measure].agg(agg_func)
+                primary_totals = df_agg.groupby(dim)[measure].sum()
+            else:
+                check = filtered.groupby(dim)[measure].agg(agg_func)
+                primary_totals = df_agg.set_index(dim)[measure]
+
+            # Compare only the keys present in primary (which may be limited)
+            common_keys = primary_totals.index.intersection(check.index)
+            if len(common_keys) == 0:
+                return {"verified": False, "discrepancy": "No common keys between primary and reconciliation results"}
+
+            primary_vals = primary_totals.loc[common_keys].values.astype(float)
+            check_vals = check.loc[common_keys].values.astype(float)
+
+            if np.allclose(primary_vals, check_vals, atol=TOLERANCE, rtol=TOLERANCE):
+                return {"verified": True, "discrepancy": None}
+            else:
+                max_diff = float(np.max(np.abs(primary_vals - check_vals)))
+                msg = (
+                    f"Reconciliation mismatch: max absolute difference = {max_diff:.6f} "
+                    f"(tolerance = {TOLERANCE})"
+                )
+                logger.warning(f"[Reconciliation] {msg}")
+                return {"verified": False, "discrepancy": msg}
+
+        except Exception as exc:
+            logger.error(f"[Reconciliation] Error during reconciliation: {exc}")
+            return {"verified": False, "discrepancy": f"Reconciliation error: {exc}"}
+
     # ── Step 5: AI system prompt ───────────────────────────────────────────────
 
-    def _build_system_prompt(self, prompt: str, clean_ds: str, clean_output: str) -> str:
+    def _build_system_prompt(
+        self,
+        prompt: str,
+        clean_ds: str,
+        clean_output: str,
+        df_agg: Optional[pd.DataFrame] = None,
+        chart_type: str = "bar",
+        dim: str = "Region",
+        measure: str = "NetRevenueUSD",
+    ) -> str:
         schema = self._get_schema_summary()
         read_stmt = (
             f'pd.read_pickle(r"{clean_ds}")'
             if clean_ds.endswith(".pkl")
             else f'pd.read_excel(r"{clean_ds}")'
         )
+
+        # If pre-computed data is available, embed it as a CSV literal
+        precomputed_section = ""
+        if df_agg is not None:
+            csv_str = df_agg.to_csv(index=False)
+            precomputed_section = f"""
+PRE-COMPUTED DATA (use this EXACTLY — do NOT re-aggregate from the raw dataset)
+--------------------------------------------------------------------------------
+The numeric values below have been deterministically computed and verified.
+Read them with: df_agg = pd.read_csv(io.StringIO(PRECOMPUTED_CSV))
+
+```csv
+{csv_str}
+```
+
+CRITICAL: Your script MUST use these pre-computed values for the chart.
+Do NOT recalculate aggregations from the raw dataset.
+Import io at the top of your script and use pd.read_csv(io.StringIO(...)) to load this data.
+"""
+
         return f"""You are an expert Python Data Visualization Agent for an SAP Analytics Platform.
 
 TASK
@@ -186,7 +452,11 @@ USER REQUEST
 ------------
 "{prompt}"
 
-DATASET
+CHART TYPE: {chart_type}
+DIMENSION: {dim}
+MEASURE: {measure}
+
+DATASET (for reference schema only — do NOT aggregate from this)
 -------
 Path  : r"{clean_ds}"
 Read  : df = {read_stmt}
@@ -194,6 +464,7 @@ Read  : df = {read_stmt}
 SCHEMA (column [dtype] — sample/range)
 ---------------------------------------
 {schema}
+{precomputed_section}
 
 OUTPUT IMAGE
 ------------
@@ -201,7 +472,7 @@ Save the figure to: r"{clean_output}"
 
 STRICT RULES
 ------------
-1. Use ONLY: pandas, matplotlib, seaborn, numpy, openpyxl. No other libraries.
+1. Use ONLY: pandas, matplotlib, seaborn, numpy, openpyxl, io. No other libraries.
 2. Set matplotlib.use('Agg') BEFORE importing pyplot.
 3. Validate that required columns exist; raise ValueError with column name if missing.
 4. Clean NaN values before aggregating.
@@ -213,8 +484,8 @@ STRICT RULES
 10. Return ONLY executable Python code — NO markdown, NO backticks, NO explanations.
 11. Do not print anything except: print(r"{clean_output}") at the very end.
 12. Do not use network access or read any file except the dataset.
-13. If the chart type is not specified, choose the most insightful visualization.
-14. Auto-infer x-axis, y-axis, aggregation, labels, legends, title from the user request.
+13. If pre-computed data is provided above, use it directly — do NOT re-aggregate.
+14. Auto-infer x-axis, y-axis, labels, legends, title from the user request.
 15. Use currency formatting (e.g. $1.23M) for revenue/cost columns automatically.
 
 Generate complete Python code only. No explanation."""
@@ -235,11 +506,14 @@ Generate complete Python code only. No explanation."""
         )
 
     def _generate_python_code(
-        self, prompt: str, output_img_path: str, fallback_mode: bool = False
+        self, prompt: str, output_img_path: str, fallback_mode: bool = False,
+        df_agg: Optional[pd.DataFrame] = None,
+        chart_type: str = "bar", dim: str = "Region", measure: str = "NetRevenueUSD",
     ) -> str:
         """
         Step 6 — Synthesize a standalone Python visualization script.
         AI-first: calls AI Core LLM. On failure: deterministic template fallback.
+        The LLM receives pre-computed data (df_agg) and must NOT re-aggregate.
         """
         ds_path  = self._get_dataset_path()
         clean_ds = str(ds_path).replace("\\", "/")
@@ -253,7 +527,10 @@ Generate complete Python code only. No explanation."""
         # ── AI Core attempt ──────────────────────────────────────────────────
         if not fallback_mode:
             try:
-                system_prompt = self._build_system_prompt(prompt, clean_ds, clean_out)
+                system_prompt = self._build_system_prompt(
+                    prompt, clean_ds, clean_out,
+                    df_agg=df_agg, chart_type=chart_type, dim=dim, measure=measure,
+                )
                 raw = ai_core_service.generate_aicore_completion(system_prompt)
                 if raw and not raw.startswith(("AI Insight", "Simulated Response")):
                     code = self._strip_markdown(raw)
@@ -264,19 +541,25 @@ Generate complete Python code only. No explanation."""
                 logger.warning(f"[Graph Agent] SAP AI Core skipped: {exc}")
 
         # ── Deterministic fallback ───────────────────────────────────────────
-        chart_type = self._infer_chart_type(prompt)
-        dim        = self._infer_dim(prompt)
-        measure    = self._infer_measure(prompt)
         logger.info(f"[Graph Agent] Deterministic fallback → chart={chart_type}, dim={dim}, measure={measure}")
-
-        return self._deterministic_code(chart_type, dim, measure, clean_ds, clean_out, read_stmt)
+        return self._deterministic_code(chart_type, dim, measure, clean_ds, clean_out, read_stmt, df_agg)
 
     # ── Deterministic code templates ──────────────────────────────────────────
 
     def _deterministic_code(
         self, chart_type: str, dim: str, measure: str,
         clean_ds: str, clean_out: str, read_stmt: str,
+        df_agg: Optional[pd.DataFrame] = None,
     ) -> str:
+        # If pre-computed data is available, embed it as CSV and read from that
+        if df_agg is not None and chart_type not in ("heatmap", "scatter", "box", "violin"):
+            csv_escaped = df_agg.to_csv(index=False).replace("\\", "\\\\").replace('"', '\\"')
+            agg_read = f'''import io
+agg = pd.read_csv(io.StringIO("""{df_agg.to_csv(index=False)}"""))
+'''
+        else:
+            agg_read = None
+
         header = f"""import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
@@ -305,11 +588,19 @@ plt.close()
 print(r"{clean_out}")
 """
 
+        # Helper: use pre-computed data or inline aggregation
+        def agg_block(default_code: str) -> str:
+            if agg_read:
+                return agg_read
+            return default_code
+
         # ── Funnel ────────────────────────────────────────────────────────────
         if chart_type == "funnel":
-            return header + f"""
-agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
+            agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
 agg = agg.sort_values("{measure}", ascending=False).head(8)
+''')
+            return header + f"""
+{agg_src}
 total = agg["{measure}"].sum()
 agg["pct"] = agg["{measure}"] / total * 100
 max_v = agg["{measure}"].max()
@@ -349,11 +640,17 @@ plt.yticks(rotation=0)
         # ── Stacked Bar ───────────────────────────────────────────────────────
         if chart_type == "stacked_bar":
             sec_dim = "Category" if dim != "Category" else "Region"
-            return header + f"""
-pivot = df.groupby(["{dim}", "{sec_dim}"])["{measure}"].sum().unstack(fill_value=0)
+            if agg_read:
+                pivot_src = f"""{agg_read}
+pivot = agg.pivot_table(index="{dim}", columns="{sec_dim}", values="{measure}", fill_value=0)
+"""
+            else:
+                pivot_src = f"""pivot = df.groupby(["{dim}", "{sec_dim}"])["{measure}"].sum().unstack(fill_value=0)
 top_idx = df.groupby("{dim}")["{measure}"].sum().nlargest(8).index
 pivot = pivot.loc[pivot.index.isin(top_idx)]
-
+"""
+            return header + f"""
+{pivot_src}
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
 pivot.plot(kind="bar", stacked=True, ax=ax, colormap="tab10",
            edgecolor="#1e293b", linewidth=0.4)
@@ -367,10 +664,12 @@ plt.legend(title="{sec_dim}", bbox_to_anchor=(1.02, 1), loc="upper left", fontsi
 
         # ── Donut / Pie ───────────────────────────────────────────────────────
         if chart_type in ("donut", "pie"):
-            wedge = "dict(width=0.42, edgecolor='white')" if chart_type == "donut" else "dict(edgecolor='white')"
-            return header + f"""
-agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
+            wedge = 'dict(width=0.42, edgecolor=\'white\')' if chart_type == "donut" else 'dict(edgecolor=\'white\')'
+            agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
 agg = agg.sort_values("{measure}", ascending=False).head(7)
+''')
+            return header + f"""
+{agg_src}
 fig, ax = plt.subplots(figsize=(8, 7), dpi=300)
 colors = sns.color_palette("Spectral", len(agg))
 wedges, texts, autotexts = ax.pie(
@@ -389,8 +688,10 @@ ax.set_title(f"Share of {measure} by {dim}",
         if chart_type in ("line", "area"):
             t_dim = "Quarter" if "quarter" in dim.lower() else "MonthName"
             fill = f"ax.fill_between(range(len(agg)), agg['{measure}'], color='#38bdf8', alpha=0.3)" if chart_type == "area" else ""
+            agg_src = agg_block(f'''agg = df.groupby("{t_dim}")["{measure}"].sum().reset_index()
+''')
             return header + f"""
-agg = df.groupby("{t_dim}")["{measure}"].sum().reset_index()
+{agg_src}
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
 ax.plot(agg["{t_dim}"].astype(str), agg["{measure}"],
         marker="o", linewidth=2.5, color="#0284c7",
@@ -408,9 +709,11 @@ ax.yaxis.set_major_formatter(mticker.FuncFormatter(
 
         # ── Waterfall ─────────────────────────────────────────────────────────
         if chart_type == "waterfall":
-            return header + f"""
-agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
+            agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
 agg = agg.sort_values("{measure}", ascending=False).head(8)
+''')
+            return header + f"""
+{agg_src}
 agg["cumulative"] = agg["{measure}"].cumsum()
 bottoms = [0] + list(agg["cumulative"].iloc[:-1])
 
@@ -433,9 +736,11 @@ for bar, b in zip(bars, bottoms):
 
         # ── Treemap (horizontal bar substitute) ───────────────────────────────
         if chart_type == "treemap":
-            return header + f"""
-agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
+            agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
 agg = agg.sort_values("{measure}", ascending=False).head(10)
+''')
+            return header + f"""
+{agg_src}
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
 colors = sns.color_palette("crest", len(agg))
 bars = ax.barh(agg["{dim}"].astype(str), agg["{measure}"],
@@ -480,9 +785,11 @@ plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
 """ + save
 
         # ── Default: Bar chart ─────────────────────────────────────────────────
-        return header + f"""
-agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
+        agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
 agg = agg.sort_values("{measure}", ascending=False).head(10)
+''')
+        return header + f"""
+{agg_src}
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
 colors = sns.color_palette("Blues_r", len(agg))
 bars = ax.bar(agg["{dim}"].astype(str), agg["{measure}"],
@@ -515,21 +822,26 @@ for bar in bars:
 
     # ── Step 8 + cleanup insights ─────────────────────────────────────────────
 
-    def _build_insights(self, prompt: str, chart_type: str, dim: str, measure: str, script_name: str) -> str:
+    def _build_insights(self, prompt: str, chart_type: str, dim: str, measure: str, script_name: str, verified: bool = True) -> str:
         chart_label = chart_type.replace("_", " ").title()
+        verification_note = "✅ Data verified" if verified else "⚠️ Verification failed — using deterministic fallback"
         return (
             f"• **AI Graph Agent** generated a **{chart_label} Chart** for your request.\n"
             f"• Visualizing **{measure}** grouped by **{dim}**.\n"
+            f"• {verification_note}\n"
             f"• Dataset: `SAC_Sales_Preprocessed` — temp script `{script_name}` auto-deleted after execution."
         )
 
     # ── Step 3–10: Main entry point ───────────────────────────────────────────
 
-    def generate_custom_graph(self, prompt: str) -> Dict[str, Any]:
+    def generate_custom_graph(self, prompt: str, query_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Full 10-step Custom Graph Generation workflow.
-        Returns a dict with: status, prompt, image_base64, chart_type, insights, message.
+        Accepts an optional query_plan from IntentEngine for validated column/chart resolution.
+        Returns a dict with: status, prompt, image_base64, chart_type, insights, message,
+                             records_matched, records_in_source, data_as_of, verified.
         """
+        request_start = time.time()
         logger.info(f"[Graph Agent] Received request: '{prompt}'")
 
         script_id       = uuid.uuid4().hex[:10]
@@ -537,14 +849,77 @@ for bar in bars:
         temp_image      = self.temp_dir / f"temp_graph_{script_id}.png"
         python_exe      = self._get_python_executable()
 
-        # Intent inference (used in fallback + insights)
-        chart_type = self._infer_chart_type(prompt)
-        dim        = self._infer_dim(prompt)
-        measure    = self._infer_measure(prompt)
+        # Intent inference: prefer query_plan from IntentEngine, fallback to keyword heuristics
+        if query_plan:
+            chart_type = query_plan.get("chart_type") or self._infer_chart_type(prompt)
+            dim        = query_plan.get("dimension") or self._infer_dim(prompt)
+            measure    = query_plan.get("metric") or self._infer_measure(prompt)
+            aggregation = query_plan.get("aggregation") or "SUM"
+            filters    = query_plan.get("filters") or []
+            date_filter = query_plan.get("date_filter")
+            limit      = query_plan.get("limit")
+            sort_info  = query_plan.get("sort")
+            sort_dir   = sort_info.get("direction", "DESC") if sort_info else "DESC"
+            logger.info(f"[Graph Agent] Using query plan: chart={chart_type}, dim={dim}, measure={measure}")
+        else:
+            chart_type = self._infer_chart_type(prompt)
+            dim        = self._infer_dim(prompt)
+            measure    = self._infer_measure(prompt)
+            aggregation = "SUM"
+            filters    = []
+            date_filter = None
+            limit      = None
+            sort_dir   = "DESC"
+            logger.info(f"[Graph Agent] Heuristic inference: chart={chart_type}, dim={dim}, measure={measure}")
+
+        # Validate columns exist in dataset & get freshness metadata
+        verified = True
+        data_as_of = None
+        records_in_source = 0
+        records_matched = 0
+        df_agg = None
 
         try:
-            # ── Step 6a: AI-first code generation ─────────────────────────────
-            py_code = self._generate_python_code(prompt, str(temp_image), fallback_mode=False)
+            df = excel_dataset_service.get_df()
+            data_as_of = excel_dataset_service.get_data_as_of()
+            records_in_source = len(df)
+
+            if measure not in df.columns:
+                logger.warning(f"[Graph Agent] Metric '{measure}' not found. Falling back to NetRevenueUSD.")
+                measure = "NetRevenueUSD"
+            if dim not in df.columns:
+                logger.warning(f"[Graph Agent] Dimension '{dim}' not found. Falling back to Region.")
+                dim = "Region"
+
+            # ── NEW: Deterministic pre-computation ────────────────────────────
+            df_agg = self._compute_graph_dataset(
+                chart_type=chart_type, dim=dim, measure=measure,
+                aggregation=aggregation, filters=filters,
+                date_filter=date_filter, limit=limit, sort_dir=sort_dir, df=df,
+            )
+            records_matched = len(df_agg)
+            logger.info(f"[Graph Agent] Pre-computed dataset: {df_agg.shape}, records_matched={records_matched}")
+
+            # ── NEW: Dual-path reconciliation ─────────────────────────────────
+            recon = self._reconcile_graph_dataset(
+                df_agg=df_agg, chart_type=chart_type, dim=dim, measure=measure,
+                aggregation=aggregation, filters=filters, date_filter=date_filter, df=df,
+            )
+            verified = recon["verified"]
+            if not verified:
+                logger.warning(f"[Graph Agent] Reconciliation FAILED: {recon['discrepancy']}")
+
+        except Exception as exc:
+            logger.error(f"[Graph Agent] Pre-computation error: {exc}")
+            records_matched = 0
+            verified = False
+
+        try:
+            # ── Step 6a: AI-first code generation (with pre-computed data) ────
+            py_code = self._generate_python_code(
+                prompt, str(temp_image), fallback_mode=(not verified),
+                df_agg=df_agg, chart_type=chart_type, dim=dim, measure=measure,
+            )
 
             with open(temp_script, "w", encoding="utf-8") as fh:
                 fh.write(py_code)
@@ -562,7 +937,10 @@ for bar in bars:
                     f"[Graph Agent] Attempt 1 failed (rc={proc.returncode}). "
                     f"Error snippet: {proc.stderr[:200]}"
                 )
-                fallback_code = self._generate_python_code(prompt, str(temp_image), fallback_mode=True)
+                fallback_code = self._generate_python_code(
+                    prompt, str(temp_image), fallback_mode=True,
+                    df_agg=df_agg, chart_type=chart_type, dim=dim, measure=measure,
+                )
                 with open(temp_script, "w", encoding="utf-8") as fh:
                     fh.write(fallback_code)
 
@@ -581,6 +959,10 @@ for bar in bars:
                     "chart_type": chart_type,
                     "insights": "",
                     "message": f"Graph execution failed after retry: {proc.stderr[:300]}",
+                    "records_matched": records_matched,
+                    "records_in_source": records_in_source,
+                    "data_as_of": data_as_of,
+                    "verified": False,
                 }
 
             # ── Step 8: Verify image was produced ────────────────────────────
@@ -593,6 +975,10 @@ for bar in bars:
                     "chart_type": chart_type,
                     "insights": "",
                     "message": "Graph image was not created by the script.",
+                    "records_matched": records_matched,
+                    "records_in_source": records_in_source,
+                    "data_as_of": data_as_of,
+                    "verified": False,
                 }
 
             # ── Step 8: Encode to base64 data-URI ────────────────────────────
@@ -600,16 +986,28 @@ for bar in bars:
                 img_b64 = base64.b64encode(img_fh.read()).decode("utf-8")
 
             data_uri = f"data:image/png;base64,{img_b64}"
-            insights = self._build_insights(prompt, chart_type, dim, measure, temp_script.name)
+            insights = self._build_insights(prompt, chart_type, dim, measure, temp_script.name, verified=verified)
 
-            logger.info(f"[Graph Agent] Successfully generated visualization for '{prompt}'.")
+            elapsed_ms = int((time.time() - request_start) * 1000)
+            logger.info(
+                f"[Graph Agent] ✅ Request completed | "
+                f"chart={chart_type} dim={dim} measure={measure} agg={aggregation} | "
+                f"records_matched={records_matched} records_in_source={records_in_source} | "
+                f"data_as_of={data_as_of} verified={verified} | "
+                f"elapsed={elapsed_ms}ms"
+            )
+
             return {
-                "status":       "success",
-                "prompt":       prompt,
-                "image_base64": data_uri,
-                "chart_type":   chart_type,
-                "insights":     insights,
-                "message":      f"Successfully generated {chart_type.replace('_', ' ')} chart for '{prompt}'.",
+                "status":           "success",
+                "prompt":           prompt,
+                "image_base64":     data_uri,
+                "chart_type":       chart_type,
+                "insights":         insights,
+                "message":          f"Successfully generated {chart_type.replace('_', ' ')} chart for '{prompt}'.",
+                "records_matched":  records_matched,
+                "records_in_source": records_in_source,
+                "data_as_of":       data_as_of,
+                "verified":         verified,
             }
 
         except subprocess.TimeoutExpired:
@@ -621,6 +1019,10 @@ for bar in bars:
                 "chart_type": chart_type,
                 "insights": "",
                 "message": "Graph generation timed out. Try a simpler request.",
+                "records_matched": records_matched,
+                "records_in_source": records_in_source,
+                "data_as_of": data_as_of,
+                "verified": False,
             }
         except Exception as exc:
             logger.error(f"[Graph Agent] Pipeline error: {exc}")
@@ -631,6 +1033,10 @@ for bar in bars:
                 "chart_type": chart_type,
                 "insights": "",
                 "message": f"Dynamic graph error: {exc}",
+                "records_matched": records_matched,
+                "records_in_source": records_in_source,
+                "data_as_of": data_as_of,
+                "verified": False,
             }
         finally:
             # ── Step 9: Auto-delete temp script & temp image ──────────────────

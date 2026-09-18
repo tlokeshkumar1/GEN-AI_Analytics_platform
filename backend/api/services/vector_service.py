@@ -20,14 +20,8 @@ class VectorService:
                 return _query_cache[cache_key]
         
         embedding = ai_core_service.generate_embedding(text_query)
-        results = vector_client.similarity_search(embedding, top_k)
         if not results:
-            # Fallback mock context if DB empty
-            results = [{
-                "ID": "chunk_01",
-                "TEXT_CHUNK": f"Sales context match for '{text_query}': Enterprise software and tech hardware in North America drove 35% of Q3 profit margin.",
-                "SCORE": 0.92
-            }]
+            results = []
         
         # Cache the results
         with _cache_lock:

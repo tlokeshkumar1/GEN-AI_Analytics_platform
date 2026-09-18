@@ -8,7 +8,7 @@ class HANAClient:
     def execute_query(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
         conn = db_manager.get_connection()
         if not conn:
-            logger.info("Executing HANA query in mock mode")
+            logger.error("HANA Database connection is not active.")
             return []
         
         try:
