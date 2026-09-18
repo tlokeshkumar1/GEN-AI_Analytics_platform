@@ -19,7 +19,13 @@ class VectorService:
                 logger.debug(f"Vector search cache hit for: {text_query[:50]}")
                 return _query_cache[cache_key]
         
-        embedding = ai_core_service.generate_embedding(text_query)
+        try:
+            embedding = ai_core_service.generate_embedding(text_query)
+            results = vector_client.similarity_search(embedding, top_k)
+        except Exception as e:
+            logger.warning(f"Vector search failed: {e}")
+            results = []
+
         if not results:
             results = []
         

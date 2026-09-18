@@ -158,6 +158,16 @@ class AnalyticsEngine:
                 return df[df[col] <= float(val)]
             elif op == "IN":
                 if isinstance(val, list):
+                    if pd.api.types.is_numeric_dtype(df[col]):
+                        # Numeric IN filter — cast values to the column's type
+                        try:
+                            numeric_vals = [float(v) for v in val]
+                            if pd.api.types.is_integer_dtype(df[col]):
+                                numeric_vals = [int(v) for v in numeric_vals]
+                            return df[df[col].isin(numeric_vals)]
+                        except (ValueError, TypeError):
+                            pass
+                    # String IN filter — case-insensitive
                     vals_lower = [str(v).lower() for v in val]
                     return df[df[col].astype(str).str.lower().isin(vals_lower)]
                 return df
@@ -206,10 +216,68 @@ class AnalyticsEngine:
     def _aggregate_by_dimension(self, df: pd.DataFrame, metric: str, dimension: str,
                                 aggregation: str, limit: Optional[int] = None,
                                 sort: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        """Group by dimension and aggregate the metric."""
+        """Group by dimension and aggregate the metric. Supports composite dimensions."""
         if metric not in df.columns:
             raise ValueError(f"Metric column '{metric}' not found. Available numeric columns: "
                            f"{', '.join(schema_service.get_measures())}")
+
+        # Detect composite dimension (e.g. "Year, Quarter" or "Year, MonthName")
+        is_composite = ", " in dimension
+        if is_composite:
+            dim_parts = [d.strip() for d in dimension.split(",")]
+            for part in dim_parts:
+                if part not in df.columns:
+                    raise ValueError(f"Dimension column '{part}' not found in dataset.")
+
+            # Group by multiple columns
+            agg_func = self._get_agg_func(aggregation)
+            grouped = df.groupby(dim_parts, dropna=True)[metric].agg(agg_func).reset_index()
+
+            # Clean NaN
+            grouped = grouped.dropna(subset=[metric])
+
+            # Chronological sorting for Year+Quarter or Year+MonthName
+            if "Year" in dim_parts and "Quarter" in dim_parts:
+                grouped["_qnum"] = grouped["Quarter"].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
+                grouped = grouped.sort_values(["Year", "_qnum"])
+                grouped.drop(columns=["_qnum"], inplace=True)
+            elif "Year" in dim_parts and "MonthName" in dim_parts:
+                month_order = {
+                    "January": 1, "February": 2, "March": 3, "April": 4,
+                    "May": 5, "June": 6, "July": 7, "August": 8,
+                    "September": 9, "October": 10, "November": 11, "December": 12,
+                }
+                grouped["_mnum"] = grouped["MonthName"].map(month_order).fillna(0).astype(int)
+                grouped = grouped.sort_values(["Year", "_mnum"])
+                grouped.drop(columns=["_mnum"], inplace=True)
+            elif sort:
+                sort_col = sort.get("column", metric)
+                if sort_col not in grouped.columns:
+                    sort_col = metric
+                ascending = sort.get("direction", "DESC") == "ASC"
+                grouped = grouped.sort_values(sort_col, ascending=ascending)
+
+            # Apply limit
+            if limit and limit > 0:
+                grouped = grouped.head(limit)
+
+            # Build combined period label and return records
+            label_col = " ".join(dim_parts)  # e.g. "Year Quarter"
+            records = []
+            for _, row in grouped.iterrows():
+                label = " ".join(str(row[p]) for p in dim_parts)
+                record = {
+                    label_col: label,
+                    metric: float(row[metric]) if pd.notna(row[metric]) else 0,
+                    "formatted_value": self._format_value(row[metric], metric),
+                }
+                # Also include individual dimension values for downstream consumers
+                for p in dim_parts:
+                    record[p] = str(row[p])
+                records.append(record)
+            return records
+
+        # Single dimension path (original logic)
         if dimension not in df.columns:
             raise ValueError(f"Dimension column '{dimension}' not found. Available dimensions: "
                            f"{', '.join(schema_service.get_dimensions())}")

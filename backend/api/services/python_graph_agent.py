@@ -83,8 +83,13 @@ _DIM_KEYWORDS: Dict[str, str] = {
 }
 
 _MEASURE_KEYWORDS: Dict[str, str] = {
-    "margin":   "GrossMarginPercent",
-    "profit":   "GrossMarginPercent",
+    "gross profit": "GrossMarginUSD",
+    "gross margin": "GrossMarginUSD",
+    "margin usd":  "GrossMarginUSD",
+    "margin %":    "GrossMarginPercent",
+    "margin percent": "GrossMarginPercent",
+    "profit":   "GrossMarginUSD",
+    "margin":   "GrossMarginUSD",
     "quantity": "Quantity",
     "units":    "Quantity",
     "discount": "DiscountPercent",
@@ -173,6 +178,18 @@ class PythonGraphAgent:
 
     def _infer_dim(self, prompt: str) -> str:
         p = prompt.lower()
+        # Check for multi-year composite dimensions first
+        import re as _re
+        years = _re.findall(r'\b(20[12]\d)\b', p)
+        multi_year = len(set(years)) > 1
+        if multi_year:
+            quarterly_words = ["quarterly", "quarter", "each quarter"]
+            monthly_words = ["monthly", "month", "each month"]
+            separately_words = ["separately", "each", "broken down"]
+            if any(w in p for w in quarterly_words) or (any(w in p for w in separately_words) and "quarter" in p):
+                return "Year, Quarter"
+            if any(w in p for w in monthly_words) or (any(w in p for w in separately_words) and "month" in p):
+                return "Year, MonthName"
         for kw, col in _DIM_KEYWORDS.items():
             if kw in p:
                 return col
@@ -300,6 +317,43 @@ class PythonGraphAgent:
 
         # Standard aggregation path
         agg_func = _AGG_MAP.get(aggregation, "sum")
+
+        # Support composite dimensions (e.g. "Year, Quarter")
+        is_composite = ", " in str(dim)
+        if is_composite:
+            dim_parts = [d.strip() for d in dim.split(",")]
+            for part in dim_parts:
+                if part not in filtered.columns:
+                    logger.warning(f"[PreCompute] Composite dim part '{part}' not in columns, falling back")
+                    dim = "Region"
+                    is_composite = False
+                    break
+
+        if is_composite:
+            dim_parts = [d.strip() for d in dim.split(",")]
+            agg = filtered.groupby(dim_parts)[measure].agg(agg_func).reset_index()
+
+            # Chronological sorting
+            if "Year" in dim_parts and "Quarter" in dim_parts:
+                agg["_qnum"] = agg["Quarter"].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
+                agg = agg.sort_values(["Year", "_qnum"]).drop(columns=["_qnum"])
+            elif "Year" in dim_parts and "MonthName" in dim_parts:
+                month_order = {
+                    "January": 1, "February": 2, "March": 3, "April": 4,
+                    "May": 5, "June": 6, "July": 7, "August": 8,
+                    "September": 9, "October": 10, "November": 11, "December": 12,
+                }
+                agg["_mnum"] = agg["MonthName"].map(month_order).fillna(0).astype(int)
+                agg = agg.sort_values(["Year", "_mnum"]).drop(columns=["_mnum"])
+            else:
+                ascending = sort_dir == "ASC"
+                agg = agg.sort_values(measure, ascending=ascending)
+
+            # Add combined label column
+            label_col = " ".join(dim_parts)
+            agg[label_col] = agg.apply(lambda row: " ".join(str(row[p]) for p in dim_parts), axis=1)
+
+            return agg
 
         if chart_type == "stacked_bar":
             sec_dim = "Category" if dim != "Category" else "Region"
@@ -574,7 +628,7 @@ PALETTE = sns.color_palette("Blues_r", 10)
 {read_stmt}
 
 def fmt_val(v, col):
-    if col in ("NetRevenueUSD", "TotalCostUSD") and abs(v) >= 1e6:
+    if col in ("NetRevenueUSD", "TotalCostUSD", "GrossMarginUSD") and abs(v) >= 1e6:
         return f"${{v/1e6:.2f}}M"
     if col in ("GrossMarginPercent", "DiscountPercent"):
         return f"{{v:.1f}}%"
@@ -785,22 +839,44 @@ plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
 """ + save
 
         # ── Default: Bar chart ─────────────────────────────────────────────────
+        # Handle composite dimensions (e.g., "Year, Quarter" → label column "Year Quarter")
+        is_composite_dim = ", " in dim
+        if is_composite_dim:
+            label_col = dim.replace(", ", " ")  # "Year, Quarter" → "Year Quarter"
+        else:
+            label_col = dim
+
         agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
 agg = agg.sort_values("{measure}", ascending=False).head(10)
 ''')
+        # For composite dimensions with pre-computed data, use the label column
+        if is_composite_dim and agg_read:
+            x_col = label_col
+        else:
+            x_col = dim
+
         return header + f"""
 {agg_src}
-fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
+# Determine x-axis column
+x_col = "{x_col}"
+if x_col not in agg.columns:
+    # Try to find the label column from composite dimension
+    for c in agg.columns:
+        if c not in ["{measure}"] and agg[c].dtype == object:
+            x_col = c
+            break
+
+fig, ax = plt.subplots(figsize=(12, 6) if len(agg) > 6 else (10, 6), dpi=300)
 colors = sns.color_palette("Blues_r", len(agg))
-bars = ax.bar(agg["{dim}"].astype(str), agg["{measure}"],
+bars = ax.bar(agg[x_col].astype(str), agg["{measure}"],
               color=colors, edgecolor="#0f172a", linewidth=0.7, alpha=0.92)
-ax.set_title(f"Total {measure} by {dim}",
+ax.set_title(f"Total {measure} by {label_col}",
              fontsize=14, fontweight="bold", pad=15, color="#0f172a")
-ax.set_xlabel("{dim}", fontsize=11, fontweight="bold", color="#334155")
+ax.set_xlabel("{label_col}", fontsize=11, fontweight="bold", color="#334155")
 ax.set_ylabel("Total {measure}", fontsize=11, fontweight="bold", color="#334155")
 plt.xticks(rotation=30, ha="right")
 ax.yaxis.set_major_formatter(mticker.FuncFormatter(
-    lambda x, _: f"${{x/1e6:.1f}}M" if "{measure}" in ("NetRevenueUSD", "TotalCostUSD") and x >= 1e6 else f"{{x:,.0f}}"
+    lambda x, _: f"${{x/1e6:.1f}}M" if "{measure}" in ("NetRevenueUSD", "TotalCostUSD", "GrossMarginUSD") and x >= 1e6 else f"{{x:,.0f}}"
 ))
 for bar in bars:
     h = bar.get_height()
@@ -887,7 +963,15 @@ for bar in bars:
             if measure not in df.columns:
                 logger.warning(f"[Graph Agent] Metric '{measure}' not found. Falling back to NetRevenueUSD.")
                 measure = "NetRevenueUSD"
-            if dim not in df.columns:
+            # Validate dimension — support composite dimensions like "Year, Quarter"
+            if ", " in str(dim):
+                dim_parts = [d.strip() for d in dim.split(",")]
+                for part in dim_parts:
+                    if part not in df.columns:
+                        logger.warning(f"[Graph Agent] Composite dim part '{part}' not found. Falling back to Region.")
+                        dim = "Region"
+                        break
+            elif dim not in df.columns:
                 logger.warning(f"[Graph Agent] Dimension '{dim}' not found. Falling back to Region.")
                 dim = "Region"
 

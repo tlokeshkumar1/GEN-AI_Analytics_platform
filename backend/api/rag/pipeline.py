@@ -151,7 +151,7 @@ class RAGPipeline:
 
     # ── Main Pipeline ─────────────────────────────────────────────────────────
 
-    def run(self, user_message: str, top_k: int = 5,
+    def run(self, user_message: str, top_k: int = 15,
             event_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, Any]:
         """
         Enhanced hybrid RAG pipeline with intent detection and structured analytics.
@@ -384,11 +384,17 @@ class RAGPipeline:
         step_calc["message"] = f"Calculated from {analytics_result.records_matched:,} matching records."
         self._emit(cb, "calculation", "completed", step_calc["message"])
 
-        # Stage: Validation
-        self._emit(cb, "validation", "running", "Validating calculated result...")
-        steps.append({"stage": "validation", "status": "completed",
-                     "message": "Results validated against source data."})
-        self._emit(cb, "validation", "completed", "Results validated against source data.")
+        # Stage: Vector Retrieval
+        self._emit(cb, "retrieval", "running", "Searching Vector DB...")
+        step_vec = {"stage": "retrieval", "status": "running", "message": "Searching Vector DB..."}
+        steps.append(step_vec)
+
+        t_vec = time.time()
+        vector_chunks = retriever.retrieve(user_message, top_k)
+        ctx.retrieval_time_ms = (time.time() - t_vec) * 1000
+        step_vec["status"] = "completed"
+        step_vec["message"] = f"Retrieved {len(vector_chunks)} context chunks from Vector DB."
+        self._emit(cb, "retrieval", "completed", step_vec["message"])
 
         # Stage: LLM explanation
         self._emit(cb, "explanation", "running", "Preparing answer...")
@@ -396,16 +402,18 @@ class RAGPipeline:
         steps.append(step_llm)
 
         t0 = time.time()
-        reply = self._generate_analytical_response(user_message, plan, analytics_result)
+        # Build RAG prompt using Vector DB retrieved chunks ONLY
+        formatted_prompt = prompt_builder.build_prompt(user_message, vector_chunks)
+        reply = generator.generate(formatted_prompt)
         ctx.llm_time_ms = (time.time() - t0) * 1000
         step_llm["status"] = "completed"
-        step_llm["message"] = "Response generated from validated data."
+        step_llm["message"] = "Response generated from Vector DB."
         self._emit(cb, "explanation", "completed", "Answer prepared.")
 
         ctx.finalize("success")
         return {
             "reply": reply,
-            "sources": [],
+            "sources": vector_chunks,
             "intent": plan["intent"],
             "type": "analytical",
             "status": "success",
@@ -442,20 +450,11 @@ class RAGPipeline:
                 analytics_data = analytics_result
                 ctx.records_matched = analytics_result.records_matched
                 step_calc["status"] = "completed"
-                step_calc["message"] = f"Retrieved data from {analytics_result.records_matched:,} records."
+                step_calc["message"] = f"Calculated metadata for {analytics_result.records_matched:,} records."
                 self._emit(cb, "calculation", "completed", step_calc["message"])
-
-                # Add calculated data as a high-priority context chunk
-                data_text = self._format_analytics_as_context(plan, analytics_result)
-                context_chunks.append({
-                    "ID": "calculated_data",
-                    "TEXT_CHUNK": data_text,
-                    "SCORE": 1.0,
-                    "METADATA": '{"source": "structured_analytics", "type": "calculation"}'
-                })
             else:
                 step_calc["status"] = "completed"
-                step_calc["message"] = "No structured data needed for this query."
+                step_calc["message"] = "No additional metadata needed for this query."
                 self._emit(cb, "calculation", "completed", step_calc["message"])
 
         # If order_id with analytical context (what-if scenarios)
@@ -492,21 +491,20 @@ class RAGPipeline:
                 }
                 context_chunks.append(order_context_chunk)
 
-        # Stage: Vector retrieval
-        if plan.get("requires_vector_search", True):
-            self._emit(cb, "retrieval", "running", "Searching knowledge base...")
-            step_vec = {"stage": "retrieval", "status": "running",
-                       "message": "Searching knowledge base..."}
-            steps.append(step_vec)
+        # Stage: Vector retrieval (Unconditional for all chat RAG responses)
+        self._emit(cb, "retrieval", "running", "Searching Vector DB...")
+        step_vec = {"stage": "retrieval", "status": "running",
+                   "message": "Searching Vector DB..."}
+        steps.append(step_vec)
 
-            t0 = time.time()
-            retrieved = retriever.retrieve(user_message, top_k)
-            ctx.retrieval_time_ms = (time.time() - t0) * 1000
+        t0 = time.time()
+        retrieved = retriever.retrieve(user_message, top_k)
+        ctx.retrieval_time_ms = (time.time() - t0) * 1000
 
-            context_chunks.extend(retrieved)
-            step_vec["status"] = "completed"
-            step_vec["message"] = f"Retrieved {len(retrieved)} relevant context chunks."
-            self._emit(cb, "retrieval", "completed", step_vec["message"])
+        context_chunks.extend(retrieved)
+        step_vec["status"] = "completed"
+        step_vec["message"] = f"Retrieved {len(retrieved)} relevant context chunks from Vector DB."
+        self._emit(cb, "retrieval", "completed", step_vec["message"])
 
         # Stage: LLM generation
         self._emit(cb, "explanation", "running", "Preparing answer...")
@@ -588,11 +586,22 @@ class RAGPipeline:
         if not result.data:
             return "No data available for the requested analysis."
 
-        lines = [f"PRE-CALCULATED DATA ({agg} of {metric}):"]
+        has_date_filter = bool(plan.get("date_filter") or plan.get("filters"))
+        scope_note = "OVERALL DATASET TOTAL ACROSS ALL YEARS (2023, 2024, 2025)" if not has_date_filter else "FILTERED DATASET SCOPE"
+
+        lines = [f"PRE-CALCULATED DATA ({agg} of {metric}) — SCOPE: {scope_note}:"]
 
         if dimension:
-            for row in result.data[:20]:
-                dim_val = row.get(dimension, "Unknown")
+            # Support composite dimensions (e.g. "Year, Quarter" → label col "Year Quarter")
+            is_composite = ", " in str(dimension)
+            if is_composite:
+                label_col = dimension.replace(", ", " ")
+            else:
+                label_col = dimension
+
+            for row in result.data[:30]:
+                # Try composite label first, then individual dimension
+                dim_val = row.get(label_col, row.get(dimension, "Unknown"))
                 val = row.get(metric, 0)
                 fmt = row.get("formatted_value", str(val))
                 lines.append(f"  {dim_val}: {fmt}")
@@ -600,9 +609,9 @@ class RAGPipeline:
             for row in result.data:
                 val = row.get("value", 0)
                 fmt = row.get("formatted_value", str(val))
-                lines.append(f"  {metric} ({agg}): {fmt}")
+                lines.append(f"  Overall Total {metric} ({agg}): {fmt}")
 
-        lines.append(f"\nTotal records matched: {result.records_matched:,}")
+        lines.append(f"\nTotal records matched: {result.records_matched:,} (100% of dataset)")
         lines.append(f"Total records in dataset: {result.records_total:,}")
         return "\n".join(lines)
 
@@ -643,12 +652,16 @@ Executive Response:"""
         dimension = plan.get("dimension")
         agg = plan.get("aggregation", "SUM")
 
+        # Support composite dimensions
+        is_composite = ", " in str(dimension) if dimension else False
+        label_col = dimension.replace(", ", " ") if is_composite else dimension
+
         lines = [f"### {agg.title()} of {metric}"]
         if dimension:
-            lines.append(f"\n| {dimension} | {metric} |")
+            lines.append(f"\n| {label_col} | {metric} |")
             lines.append("| :--- | ---: |")
-            for row in result.data[:20]:
-                dim_val = row.get(dimension, "")
+            for row in result.data[:30]:
+                dim_val = row.get(label_col, row.get(dimension, ""))
                 fmt = row.get("formatted_value", "")
                 lines.append(f"| {dim_val} | **{fmt}** |")
         else:

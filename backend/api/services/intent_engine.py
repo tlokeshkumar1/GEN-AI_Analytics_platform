@@ -266,6 +266,23 @@ class IntentEngine:
 
     def _detect_dimension(self, p: str) -> Optional[str]:
         """Detect the dimension/grouping from the prompt."""
+        # Check for multi-year quarterly/monthly queries first
+        # e.g. "quarterly gross profits for 2023, 2024, and 2025" → "Year, Quarter"
+        years = re.findall(r'\b(20[12]\d)\b', p)
+        multi_year = len(set(years)) > 1
+        quarterly_words = ["quarterly", "quarter", "by quarter", "per quarter", "each quarter"]
+        monthly_words = ["monthly", "month", "by month", "per month", "each month"]
+        separately_words = ["separately", "each", "broken down", "split", "break down"]
+
+        if multi_year:
+            has_quarterly = any(w in p for w in quarterly_words)
+            has_monthly = any(w in p for w in monthly_words)
+            has_separately = any(w in p for w in separately_words)
+            if has_quarterly or (has_separately and "quarter" in p):
+                return "Year, Quarter"
+            if has_monthly or (has_separately and "month" in p):
+                return "Year, MonthName"
+
         dim_terms = [
             ("by customer", "CustomerName"), ("by product", "ProductName"),
             ("by region", "Region"), ("by country", "Country"),
@@ -357,11 +374,13 @@ class IntentEngine:
 
     def _detect_date_filter(self, p: str) -> Optional[Dict[str, Any]]:
         """Extract date/year filter from the prompt."""
-        # Year pattern: "in 2025", "for 2025", "2025"
-        year_match = re.search(r'\b(20[12]\d)\b', p)
-        if year_match:
-            year = year_match.group(1)
-            return {"column": "Year", "from": year, "to": year}
+        # Year pattern: capture ALL years mentioned (e.g. "2023, 2024, and 2025")
+        year_matches = re.findall(r'\b(20[12]\d)\b', p)
+        if year_matches:
+            unique_years = sorted(set(year_matches))
+            from_year = unique_years[0]
+            to_year = unique_years[-1]
+            return {"column": "Year", "from": from_year, "to": to_year}
 
         # Quarter pattern: "Q1 2025", "Q3"
         q_match = re.search(r'\bQ([1-4])\b', p, re.IGNORECASE)
@@ -400,18 +419,59 @@ class IntentEngine:
                 logger.warning(f"[IntentEngine] Metric '{plan['metric']}' not found in schema")
                 plan["metric"] = None
 
-        # Validate dimension column exists
-        if plan.get("dimension") and plan["dimension"] not in meta:
-            resolved = schema_service.resolve_column(plan["dimension"])
-            if resolved:
-                plan["dimension"] = resolved
-            else:
-                logger.warning(f"[IntentEngine] Dimension '{plan['dimension']}' not found in schema")
-                plan["dimension"] = None
+        # Validate dimension column exists (support composite dimensions like "Year, Quarter")
+        if plan.get("dimension"):
+            dim = plan["dimension"]
+            if ", " in dim:
+                # Composite dimension — validate each part
+                parts = [d.strip() for d in dim.split(",")]
+                valid_parts = []
+                for part in parts:
+                    if part in meta:
+                        valid_parts.append(part)
+                    else:
+                        resolved = schema_service.resolve_column(part)
+                        if resolved:
+                            valid_parts.append(resolved)
+                        else:
+                            logger.warning(f"[IntentEngine] Composite dimension part '{part}' not found")
+                if valid_parts:
+                    plan["dimension"] = ", ".join(valid_parts)
+                else:
+                    plan["dimension"] = None
+            elif dim not in meta:
+                resolved = schema_service.resolve_column(dim)
+                if resolved:
+                    plan["dimension"] = resolved
+                else:
+                    logger.warning(f"[IntentEngine] Dimension '{dim}' not found in schema")
+                    plan["dimension"] = None
+
+        # Merge duplicate equality filters on the same column into IN filter
+        # e.g. Year=2023 AND Year=2024 AND Year=2025 → Year IN [2023,2024,2025]
+        raw_filters = plan.get("filters", [])
+        if raw_filters:
+            from collections import defaultdict
+            eq_groups = defaultdict(list)  # column → [values]
+            non_eq_filters = []
+            for f in raw_filters:
+                if f.get("operator") == "=" and f.get("column") and f.get("value") is not None:
+                    eq_groups[f["column"]].append(f["value"])
+                else:
+                    non_eq_filters.append(f)
+
+            merged_filters = list(non_eq_filters)
+            for col, values in eq_groups.items():
+                if len(values) > 1:
+                    merged_filters.append({"column": col, "operator": "IN", "value": values})
+                    logger.info(f"[IntentEngine] Merged {len(values)} equality filters on '{col}' into IN filter")
+                else:
+                    merged_filters.append({"column": col, "operator": "=", "value": values[0]})
+            raw_filters = merged_filters
 
         # Validate filters
         valid_filters = []
-        for f in plan.get("filters", []):
+        for f in raw_filters:
             col = f.get("column")
             if col and col not in meta:
                 resolved = schema_service.resolve_column(col)
@@ -421,6 +481,35 @@ class IntentEngine:
                     continue
             valid_filters.append(f)
         plan["filters"] = valid_filters
+
+        # If we have an IN filter for Year that covers the same range as date_filter,
+        # prefer the date_filter (range) and remove the redundant IN filter
+        date_filter = plan.get("date_filter")
+        if date_filter and date_filter.get("column") == "Year":
+            plan["filters"] = [
+                f for f in plan["filters"]
+                if not (f.get("column") == "Year" and f.get("operator") in ("=", "IN"))
+            ]
+
+        # Detect composite dimension from multi-year prompts (LLM path)
+        if plan.get("dimension") and ", " not in str(plan.get("dimension", "")):
+            p = prompt.lower()
+            years = re.findall(r'\b(20[12]\d)\b', p)
+            multi_year = len(set(years)) > 1
+            quarterly_words = ["quarterly", "quarter", "by quarter", "per quarter", "each quarter"]
+            monthly_words = ["monthly", "month", "by month", "per month", "each month"]
+            separately_words = ["separately", "each", "broken down", "split", "break down"]
+
+            if multi_year:
+                dim = plan["dimension"]
+                has_quarterly = any(w in p for w in quarterly_words) or dim == "Quarter"
+                has_monthly = any(w in p for w in monthly_words) or dim == "MonthName"
+                has_separately = any(w in p for w in separately_words)
+
+                if has_quarterly or (has_separately and "quarter" in p):
+                    plan["dimension"] = "Year, Quarter"
+                elif has_monthly or (has_separately and "month" in p):
+                    plan["dimension"] = "Year, MonthName"
 
         # Validate aggregation
         valid_aggs = {"SUM", "AVG", "COUNT", "MIN", "MAX", "COUNT_DISTINCT"}
