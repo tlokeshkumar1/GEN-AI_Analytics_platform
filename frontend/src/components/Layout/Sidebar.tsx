@@ -34,7 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       label: 'AI Dashboards',
       subtitle: 'Vector Context + Visuals',
       icon: MessageSquareText,
-      badge: 'Llama-3.3',
+      badge: 'Llama-3.2 11B',
       badgeColor: 'bg-indigo-100 text-indigo-700',
     },
     {

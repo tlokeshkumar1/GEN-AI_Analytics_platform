@@ -207,7 +207,7 @@ class PythonGraphAgent:
     # ──────────────────────────────────────────────────────────────────────────
 
     def _apply_filters(self, df: pd.DataFrame, filters: List[Dict], date_filter: Optional[Dict]) -> pd.DataFrame:
-        """Apply query plan filters to the dataframe."""
+        """Apply query plan filters to the dataframe with strict type coercion."""
         filtered = df.copy()
 
         for f in filters:
@@ -217,23 +217,47 @@ class PythonGraphAgent:
             if col not in filtered.columns or val is None:
                 continue
             try:
-                if op == "=":
-                    filtered = filtered[filtered[col] == val]
-                elif op == "!=":
-                    filtered = filtered[filtered[col] != val]
-                elif op == ">":
-                    filtered = filtered[filtered[col] > float(val)]
-                elif op == "<":
-                    filtered = filtered[filtered[col] < float(val)]
-                elif op == ">=":
-                    filtered = filtered[filtered[col] >= float(val)]
-                elif op == "<=":
-                    filtered = filtered[filtered[col] <= float(val)]
-                elif op == "IN":
+                col_dtype = filtered[col].dtype
+
+                def coerce_val(v, target_dtype):
+                    if pd.isna(v):
+                        return v
+                    if np.issubdtype(target_dtype, np.integer):
+                        try:
+                            return int(float(str(v).strip()))
+                        except (ValueError, TypeError):
+                            return v
+                    elif np.issubdtype(target_dtype, np.floating):
+                        try:
+                            return float(str(v).strip())
+                        except (ValueError, TypeError):
+                            return v
+                    return str(v)
+
+                if isinstance(val, str) and "," in val and op in ("=", "IN"):
+                    val = [v.strip() for v in val.split(",")]
+                    op = "IN"
+
+                if op == "IN":
                     vals = val if isinstance(val, list) else [val]
-                    filtered = filtered[filtered[col].isin(vals)]
-                elif op == "CONTAINS":
-                    filtered = filtered[filtered[col].astype(str).str.contains(str(val), case=False, na=False)]
+                    coerced_vals = [coerce_val(v, col_dtype) for v in vals]
+                    filtered = filtered[filtered[col].isin(coerced_vals)]
+                else:
+                    c_val = coerce_val(val, col_dtype)
+                    if op in ("=", "=="):
+                        filtered = filtered[filtered[col] == c_val]
+                    elif op == "!=":
+                        filtered = filtered[filtered[col] != c_val]
+                    elif op == ">":
+                        filtered = filtered[filtered[col] > c_val]
+                    elif op == "<":
+                        filtered = filtered[filtered[col] < c_val]
+                    elif op == ">=":
+                        filtered = filtered[filtered[col] >= c_val]
+                    elif op == "<=":
+                        filtered = filtered[filtered[col] <= c_val]
+                    elif op == "CONTAINS":
+                        filtered = filtered[filtered[col].astype(str).str.contains(str(val), case=False, na=False)]
             except Exception as e:
                 logger.warning(f"[PreCompute] Could not apply filter {f}: {e}")
 
@@ -243,24 +267,35 @@ class PythonGraphAgent:
             to_val = date_filter.get("to")
             if col and col in filtered.columns:
                 try:
-                    if filtered[col].dtype == object:
-                        if from_val:
-                            filtered = filtered[filtered[col] >= from_val]
-                        if to_val:
-                            filtered = filtered[filtered[col] <= to_val]
-                    else:
-                        if from_val is not None:
-                            filtered = filtered[filtered[col] >= type(filtered[col].iloc[0])(from_val)]
-                        if to_val is not None:
-                            filtered = filtered[filtered[col] <= type(filtered[col].iloc[0])(to_val)]
+                    col_dtype = filtered[col].dtype
+                    if from_val is not None and str(from_val).strip():
+                        if np.issubdtype(col_dtype, np.number):
+                            year_match = re.search(r'\b(20[12]\d)\b', str(from_val))
+                            f_num = int(year_match.group(1)) if year_match else float(from_val)
+                            filtered = filtered[filtered[col] >= f_num]
+                        else:
+                            filtered = filtered[filtered[col].astype(str) >= str(from_val)]
+
+                    if to_val is not None and str(to_val).strip():
+                        if np.issubdtype(col_dtype, np.number):
+                            year_match = re.search(r'\b(20[12]\d)\b', str(to_val))
+                            t_num = int(year_match.group(1)) if year_match else float(to_val)
+                            filtered = filtered[filtered[col] <= t_num]
+                        else:
+                            filtered = filtered[filtered[col].astype(str) <= str(to_val)]
                 except Exception as e:
                     logger.warning(f"[PreCompute] Could not apply date filter {date_filter}: {e}")
+
+        # Safety fallback: if filters over-filtered dataset to 0 rows, fall back to unfiltered df
+        if len(filtered) == 0 and len(df) > 0:
+            logger.warning("[PreCompute] Filters resulted in 0 records! Falling back to full dataset.")
+            return df.copy()
 
         return filtered
 
     def _compute_graph_dataset(
         self,
-        chart_type_or_plan: Any,
+        chart_type_or_plan: Any = "bar",
         dim: Optional[str] = None,
         measure: Optional[str] = None,
         aggregation: str = "SUM",
@@ -269,14 +304,16 @@ class PythonGraphAgent:
         limit: Optional[int] = None,
         sort_dir: str = "DESC",
         df: Optional[pd.DataFrame] = None,
+        chart_type: Any = None,
     ) -> pd.DataFrame:
         """
         Deterministic pre-computation of the numeric result set.
         Supports passing a query plan dict or individual parameters.
         Returns a pre-aggregated DataFrame ready for chart rendering.
         """
-        if isinstance(chart_type_or_plan, dict):
-            plan = chart_type_or_plan
+        target = chart_type if chart_type is not None else chart_type_or_plan
+        if isinstance(target, dict):
+            plan = target
             chart_type = plan.get("chart_type", "bar")
             dim = plan.get("dimension") or plan.get("dim") or "Region"
             measure = plan.get("measure", "NetRevenueUSD")
@@ -290,7 +327,7 @@ class PythonGraphAgent:
                 if dim is not None and isinstance(dim, pd.DataFrame):
                     df = dim
         else:
-            chart_type = chart_type_or_plan
+            chart_type = target
 
         if filters is None:
             filters = []
@@ -384,13 +421,14 @@ class PythonGraphAgent:
     def _reconcile_graph_dataset(
         self,
         df_agg: pd.DataFrame,
-        chart_type_or_plan: Any,
+        chart_type_or_plan: Any = "bar",
         dim: Optional[str] = None,
         measure: Optional[str] = None,
         aggregation: str = "SUM",
         filters: Optional[List[Dict]] = None,
         date_filter: Optional[Dict] = None,
         df: Optional[pd.DataFrame] = None,
+        chart_type: Any = None,
     ) -> Dict[str, Any]:
         """
         Dual-path reconciliation: independently recompute the aggregation
@@ -400,8 +438,9 @@ class PythonGraphAgent:
         """
         TOLERANCE = 1e-4
 
-        if isinstance(chart_type_or_plan, dict):
-            plan = chart_type_or_plan
+        target = chart_type if chart_type is not None else chart_type_or_plan
+        if isinstance(target, dict):
+            plan = target
             chart_type = plan.get("chart_type", "bar")
             dim = plan.get("dimension") or plan.get("dim") or "Region"
             measure = plan.get("measure", "NetRevenueUSD")
@@ -411,7 +450,7 @@ class PythonGraphAgent:
             if df is None and dim is not None and isinstance(dim, pd.DataFrame):
                 df = dim
         else:
-            chart_type = chart_type_or_plan
+            chart_type = target
 
         if filters is None:
             filters = []
@@ -427,7 +466,12 @@ class PythonGraphAgent:
             filtered = self._apply_filters(df, filters, date_filter)
             agg_func = _AGG_MAP.get(aggregation, "sum")
 
-            if chart_type == "stacked_bar":
+            is_composite = ", " in str(dim)
+            if is_composite:
+                dim_parts = [d.strip() for d in dim.split(",")]
+                check = filtered.groupby(dim_parts)[measure].agg(agg_func)
+                primary_totals = df_agg.groupby(dim_parts)[measure].sum()
+            elif chart_type == "stacked_bar":
                 # For stacked bars, verify the grand total per dimension
                 check = filtered.groupby(dim)[measure].agg(agg_func)
                 primary_totals = df_agg.groupby(dim)[measure].sum()
@@ -496,6 +540,13 @@ Do NOT recalculate aggregations from the raw dataset.
 Import io at the top of your script and use pd.read_csv(io.StringIO(...)) to load this data.
 """
 
+        is_composite_dim = ", " in str(dim)
+        if is_composite_dim:
+            dim_parts = [d.strip() for d in dim.split(",")]
+            dim_desc = f"{dim} (composite dimension: group by column list {dim_parts} in pandas)"
+        else:
+            dim_desc = dim
+
         return f"""You are an expert Python Data Visualization Agent for an SAP Analytics Platform.
 
 TASK
@@ -507,7 +558,7 @@ USER REQUEST
 "{prompt}"
 
 CHART TYPE: {chart_type}
-DIMENSION: {dim}
+DIMENSION: {dim_desc}
 MEASURE: {measure}
 
 DATASET (for reference schema only — do NOT aggregate from this)
@@ -605,6 +656,23 @@ Generate complete Python code only. No explanation."""
         clean_ds: str, clean_out: str, read_stmt: str,
         df_agg: Optional[pd.DataFrame] = None,
     ) -> str:
+        # Check composite dimensions
+        is_composite_dim = ", " in str(dim)
+        if is_composite_dim:
+            dim_parts = [d.strip() for d in dim.split(",")]
+            label_col = " ".join(dim_parts)
+            dim_groupby_expr = f"{dim_parts}"
+            agg_fallback_code = f'''agg = df.groupby({dim_groupby_expr})["{measure}"].sum().reset_index()
+agg["{label_col}"] = agg.apply(lambda r: " ".join(str(r[p]) for p in {dim_parts}), axis=1)
+'''
+        else:
+            dim_parts = [dim]
+            label_col = dim
+            dim_groupby_expr = f'"{dim}"'
+            agg_fallback_code = f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
+agg = agg.sort_values("{measure}", ascending=False).head(10)
+'''
+
         # If pre-computed data is available, embed it as CSV and read from that
         if df_agg is not None and chart_type not in ("heatmap", "scatter", "box", "violin"):
             csv_escaped = df_agg.to_csv(index=False).replace("\\", "\\\\").replace('"', '\\"')
@@ -643,16 +711,14 @@ print(r"{clean_out}")
 """
 
         # Helper: use pre-computed data or inline aggregation
-        def agg_block(default_code: str) -> str:
+        def agg_block(default_code: Optional[str] = None) -> str:
             if agg_read:
                 return agg_read
-            return default_code
+            return default_code if default_code is not None else agg_fallback_code
 
         # ── Funnel ────────────────────────────────────────────────────────────
         if chart_type == "funnel":
-            agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
-agg = agg.sort_values("{measure}", ascending=False).head(8)
-''')
+            agg_src = agg_block()
             return header + f"""
 {agg_src}
 total = agg["{measure}"].sum()
@@ -666,13 +732,14 @@ for i, row in agg.reset_index(drop=True).iterrows():
     left = (max_v - v) / 2
     y = len(agg) - 1 - i
     ax.barh(y, v, left=left, color=colors[i], edgecolor="#0f172a", linewidth=0.8, height=0.65)
-    label = f"{{row['{dim}']}}: {{fmt_val(v, '{measure}')}} ({{pct:.1f}}%)"
+    lbl_val = row.get("{label_col}", row.iloc[0])
+    label = f"{{lbl_val}}: {{fmt_val(v, '{measure}')}} ({{pct:.1f}}%)"
     ax.text(left + v / 2, y, label, ha="center", va="center",
             color="white", fontweight="bold", fontsize=8.5)
 
 ax.set_yticks([])
 ax.set_xlabel("{measure}", fontsize=11, fontweight="bold", color="#1e293b")
-ax.set_title(f"Funnel: {measure} by {dim}", fontsize=14, fontweight="bold", pad=15, color="#0f172a")
+ax.set_title(f"Funnel: {measure} by {label_col}", fontsize=14, fontweight="bold", pad=15, color="#0f172a")
 for spine in ["top", "right", "left"]:
     ax.spines[spine].set_visible(False)
 """ + save
@@ -693,14 +760,15 @@ plt.yticks(rotation=0)
 
         # ── Stacked Bar ───────────────────────────────────────────────────────
         if chart_type == "stacked_bar":
-            sec_dim = "Category" if dim != "Category" else "Region"
+            sec_dim = "Category" if "Category" not in dim else "Region"
             if agg_read:
                 pivot_src = f"""{agg_read}
-pivot = agg.pivot_table(index="{dim}", columns="{sec_dim}", values="{measure}", fill_value=0)
+pivot = agg.pivot_table(index="{label_col}" if "{label_col}" in agg.columns else agg.columns[0], columns="{sec_dim}", values="{measure}", fill_value=0)
 """
             else:
-                pivot_src = f"""pivot = df.groupby(["{dim}", "{sec_dim}"])["{measure}"].sum().unstack(fill_value=0)
-top_idx = df.groupby("{dim}")["{measure}"].sum().nlargest(8).index
+                p_dim = f"{dim_parts}" if is_composite_dim else f'"{dim}"'
+                pivot_src = f"""pivot = df.groupby({p_dim} + ["{sec_dim}"])["{measure}"].sum().unstack(fill_value=0)
+top_idx = df.groupby({p_dim})["{measure}"].sum().nlargest(8).index
 pivot = pivot.loc[pivot.index.isin(top_idx)]
 """
             return header + f"""
@@ -708,9 +776,9 @@ pivot = pivot.loc[pivot.index.isin(top_idx)]
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
 pivot.plot(kind="bar", stacked=True, ax=ax, colormap="tab10",
            edgecolor="#1e293b", linewidth=0.4)
-ax.set_title(f"Stacked {measure} by {dim} & {sec_dim}",
+ax.set_title(f"Stacked {measure} by {label_col} & {sec_dim}",
              fontsize=14, fontweight="bold", pad=15, color="#0f172a")
-ax.set_xlabel("{dim}", fontsize=11, fontweight="bold", color="#334155")
+ax.set_xlabel("{label_col}", fontsize=11, fontweight="bold", color="#334155")
 ax.set_ylabel("Total {measure}", fontsize=11, fontweight="bold", color="#334155")
 plt.xticks(rotation=30, ha="right")
 plt.legend(title="{sec_dim}", bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
@@ -719,41 +787,44 @@ plt.legend(title="{sec_dim}", bbox_to_anchor=(1.02, 1), loc="upper left", fontsi
         # ── Donut / Pie ───────────────────────────────────────────────────────
         if chart_type in ("donut", "pie"):
             wedge = 'dict(width=0.42, edgecolor=\'white\')' if chart_type == "donut" else 'dict(edgecolor=\'white\')'
-            agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
-agg = agg.sort_values("{measure}", ascending=False).head(7)
-''')
+            agg_src = agg_block()
             return header + f"""
 {agg_src}
 fig, ax = plt.subplots(figsize=(8, 7), dpi=300)
 colors = sns.color_palette("Spectral", len(agg))
+lbl_col = "{label_col}" if "{label_col}" in agg.columns else agg.columns[0]
 wedges, texts, autotexts = ax.pie(
-    agg["{measure}"], labels=agg["{dim}"],
+    agg["{measure}"], labels=agg[lbl_col],
     autopct="%1.1f%%", startangle=140,
     colors=colors, wedgeprops={wedge},
     textprops={{"fontsize": 9, "weight": "bold"}}
 )
 for at in autotexts:
     at.set_fontsize(8)
-ax.set_title(f"Share of {measure} by {dim}",
+ax.set_title(f"Share of {measure} by {label_col}",
              fontsize=14, fontweight="bold", pad=20, color="#0f172a")
 """ + save
 
         # ── Line / Area ───────────────────────────────────────────────────────
         if chart_type in ("line", "area"):
-            t_dim = "Quarter" if "quarter" in dim.lower() else "MonthName"
-            fill = f"ax.fill_between(range(len(agg)), agg['{measure}'], color='#38bdf8', alpha=0.3)" if chart_type == "area" else ""
-            agg_src = agg_block(f'''agg = df.groupby("{t_dim}")["{measure}"].sum().reset_index()
+            if is_composite_dim:
+                line_x_col = label_col
+            else:
+                line_x_col = "Quarter" if "quarter" in dim.lower() else ("MonthName" if "month" in dim.lower() else dim)
+            agg_src = agg_block(f'''agg = df.groupby("{line_x_col}")["{measure}"].sum().reset_index()
 ''')
+            fill = f"ax.fill_between(range(len(agg)), agg['{measure}'], color='#38bdf8', alpha=0.3)" if chart_type == "area" else ""
             return header + f"""
 {agg_src}
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
-ax.plot(agg["{t_dim}"].astype(str), agg["{measure}"],
+x_series = agg["{line_x_col}"] if "{line_x_col}" in agg.columns else agg.iloc[:, 0]
+ax.plot(x_series.astype(str), agg["{measure}"],
         marker="o", linewidth=2.5, color="#0284c7",
         markerfacecolor="#0369a1", markersize=6)
 {fill}
-ax.set_title(f"Trend: {measure} across {t_dim}",
+ax.set_title(f"Trend: {measure} across {line_x_col}",
              fontsize=14, fontweight="bold", pad=15, color="#0f172a")
-ax.set_xlabel("{t_dim}", fontsize=11, fontweight="bold", color="#334155")
+ax.set_xlabel("{line_x_col}", fontsize=11, fontweight="bold", color="#334155")
 ax.set_ylabel("{measure}", fontsize=11, fontweight="bold", color="#334155")
 plt.xticks(rotation=20, ha="right")
 ax.yaxis.set_major_formatter(mticker.FuncFormatter(
@@ -763,21 +834,20 @@ ax.yaxis.set_major_formatter(mticker.FuncFormatter(
 
         # ── Waterfall ─────────────────────────────────────────────────────────
         if chart_type == "waterfall":
-            agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
-agg = agg.sort_values("{measure}", ascending=False).head(8)
-''')
+            agg_src = agg_block()
             return header + f"""
 {agg_src}
+lbl_col = "{label_col}" if "{label_col}" in agg.columns else agg.columns[0]
 agg["cumulative"] = agg["{measure}"].cumsum()
 bottoms = [0] + list(agg["cumulative"].iloc[:-1])
 
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
 colors = sns.color_palette("viridis", len(agg))
-bars = ax.bar(agg["{dim}"].astype(str), agg["{measure}"],
+bars = ax.bar(agg[lbl_col].astype(str), agg["{measure}"],
               bottom=bottoms, color=colors, edgecolor="#0f172a", linewidth=0.7)
-ax.set_title(f"Waterfall: Cumulative {measure} by {dim}",
+ax.set_title(f"Waterfall: Cumulative {measure} by {label_col}",
              fontsize=14, fontweight="bold", pad=15, color="#0f172a")
-ax.set_xlabel("{dim}", fontsize=11, fontweight="bold", color="#334155")
+ax.set_xlabel("{label_col}", fontsize=11, fontweight="bold", color="#334155")
 ax.set_ylabel("Cumulative {measure}", fontsize=11, fontweight="bold", color="#334155")
 plt.xticks(rotation=30, ha="right")
 for bar, b in zip(bars, bottoms):
@@ -790,16 +860,15 @@ for bar, b in zip(bars, bottoms):
 
         # ── Treemap (horizontal bar substitute) ───────────────────────────────
         if chart_type == "treemap":
-            agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
-agg = agg.sort_values("{measure}", ascending=False).head(10)
-''')
+            agg_src = agg_block()
             return header + f"""
 {agg_src}
+lbl_col = "{label_col}" if "{label_col}" in agg.columns else agg.columns[0]
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
 colors = sns.color_palette("crest", len(agg))
-bars = ax.barh(agg["{dim}"].astype(str), agg["{measure}"],
+bars = ax.barh(agg[lbl_col].astype(str), agg["{measure}"],
                color=colors, edgecolor="#0f172a", linewidth=0.6)
-ax.set_title(f"Category Hierarchy: {measure} by {dim}",
+ax.set_title(f"Category Hierarchy: {measure} by {label_col}",
              fontsize=14, fontweight="bold", pad=15, color="#0f172a")
 ax.set_xlabel("Total {measure}", fontsize=11, fontweight="bold", color="#334155")
 for bar in bars:
@@ -813,14 +882,15 @@ ax.invert_yaxis()
         # ── Box / Violin ──────────────────────────────────────────────────────
         if chart_type in ("box", "violin"):
             plot_fn = "sns.violinplot" if chart_type == "violin" else "sns.boxplot"
+            b_dim = dim_parts[0] if is_composite_dim else dim
             return header + f"""
-top_dims = df["{dim}"].value_counts().head(8).index
-sub = df[df["{dim}"].isin(top_dims)]
+top_dims = df["{b_dim}"].value_counts().head(8).index
+sub = df[df["{b_dim}"].isin(top_dims)]
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
-{plot_fn}(data=sub, x="{dim}", y="{measure}", ax=ax, palette="Set2")
-ax.set_title(f"Distribution of {measure} by {dim}",
+{plot_fn}(data=sub, x="{b_dim}", y="{measure}", ax=ax, palette="Set2")
+ax.set_title(f"Distribution of {measure} by {b_dim}",
              fontsize=14, fontweight="bold", pad=15, color="#0f172a")
-ax.set_xlabel("{dim}", fontsize=11, fontweight="bold", color="#334155")
+ax.set_xlabel("{b_dim}", fontsize=11, fontweight="bold", color="#334155")
 ax.set_ylabel("{measure}", fontsize=11, fontweight="bold", color="#334155")
 plt.xticks(rotation=30, ha="right")
 """ + save
@@ -828,39 +898,26 @@ plt.xticks(rotation=30, ha="right")
         # ── Scatter ───────────────────────────────────────────────────────────
         if chart_type == "scatter":
             sec = "DiscountPercent" if measure != "DiscountPercent" else "GrossMarginPercent"
+            s_dim = dim_parts[0] if is_composite_dim else dim
             return header + f"""
 sample = df.sample(n=min(1200, len(df)), random_state=42)
 fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
 sns.scatterplot(data=sample, x="{sec}", y="{measure}",
-                hue="{dim}", alpha=0.72, s=45, ax=ax, palette="tab10")
+                hue="{s_dim}", alpha=0.72, s=45, ax=ax, palette="tab10")
 ax.set_title(f"Scatter: {sec} vs {measure}",
              fontsize=14, fontweight="bold", pad=15, color="#0f172a")
 plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
 """ + save
 
-        # ── Default: Bar chart ─────────────────────────────────────────────────
-        # Handle composite dimensions (e.g., "Year, Quarter" → label column "Year Quarter")
-        is_composite_dim = ", " in dim
-        if is_composite_dim:
-            label_col = dim.replace(", ", " ")  # "Year, Quarter" → "Year Quarter"
-        else:
-            label_col = dim
-
-        agg_src = agg_block(f'''agg = df.groupby("{dim}")["{measure}"].sum().reset_index()
-agg = agg.sort_values("{measure}", ascending=False).head(10)
-''')
-        # For composite dimensions with pre-computed data, use the label column
-        if is_composite_dim and agg_read:
-            x_col = label_col
-        else:
-            x_col = dim
+        # ── Default: Bar chart / Grouped Bar chart ────────────────────────────
+        agg_src = agg_block()
+        x_col = label_col
 
         return header + f"""
 {agg_src}
 # Determine x-axis column
 x_col = "{x_col}"
 if x_col not in agg.columns:
-    # Try to find the label column from composite dimension
     for c in agg.columns:
         if c not in ["{measure}"] and agg[c].dtype == object:
             x_col = c
@@ -889,10 +946,13 @@ for bar in bars:
     # ── Step 7: venv-aware Python executable ──────────────────────────────────
 
     def _get_python_executable(self) -> str:
-        venv_py = Path(__file__).resolve().parent.parent.parent / "venv" / "Scripts" / "python.exe"
-        if venv_py.exists():
-            logger.debug(f"[Graph Agent] Using venv Python: {venv_py}")
-            return str(venv_py)
+        base_dir = Path(__file__).resolve().parent.parent  # api/
+        venv_py1 = base_dir / "venv" / "Scripts" / "python.exe"
+        venv_py2 = base_dir.parent / "venv" / "Scripts" / "python.exe"
+        for venv_py in (venv_py1, venv_py2):
+            if venv_py.exists():
+                logger.debug(f"[Graph Agent] Using venv Python: {venv_py}")
+                return str(venv_py)
         logger.debug(f"[Graph Agent] venv not found, falling back to: {sys.executable}")
         return sys.executable
 
