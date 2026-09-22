@@ -1,8 +1,9 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
 
 class RAGPromptBuilder:
-    def build_prompt(self, user_message: str, context_chunks: List[Dict[str, Any]]) -> str:
+    def build_prompt(self, user_message: str, context_chunks: List[Dict[str, Any]],
+                     chat_history: Optional[List[Dict[str, str]]] = None) -> str:
         formatted_chunks = []
 
         for c in context_chunks:
@@ -25,6 +26,29 @@ class RAGPromptBuilder:
 
         context_str = "\n".join(formatted_chunks) if formatted_chunks else "No retrieved context chunks available."
 
+        # Format conversation history for multi-turn context
+        history_str = ""
+        if chat_history:
+            history_lines = []
+            for turn in chat_history:
+                role = turn.get("role", "user").capitalize()
+                content = turn.get("content", "")
+                # Truncate very long previous messages to save context window
+                if len(content) > 500:
+                    content = content[:497] + "..."
+                history_lines.append(f"{role}: {content}")
+            if history_lines:
+                history_str = "\n".join(history_lines)
+
+        # Build the history section only if there is history
+        history_section = ""
+        if history_str:
+            history_section = f"""
+CONVERSATION HISTORY (previous turns in this session — use for context on follow-up questions):
+{history_str}
+
+"""
+
         prompt = f"""You are an expert RAG (Retrieval-Augmented Generation) assistant and executive enterprise analytics AI.
 Your goal is to extract as much relevant and reliable information as possible from the retrieved Vector Database context while maintaining 100% factual grounding.
 
@@ -46,11 +70,11 @@ Your goal is to extract as much relevant and reliable information as possible fr
    - Structure explanations using bold section headers (e.g., ### Key Insights, ### Performance Breakdown, ### Strategic Takeaways).
    - Use Markdown tables when presenting comparative figures, category breakdowns, or quarterly metrics.
    - Bold key metrics, monetary values, percentages, and entity names (e.g., **$14.2M**, **+18.4%**).
+11. **Conversation Continuity**: If conversation history is provided, understand the context of follow-up questions. Resolve pronouns and references (e.g., "that", "it", "the same") using prior conversation turns.
 
 RETRIEVED VECTOR DB CONTEXT:
 {context_str}
-
-USER QUERY:
+{history_section}USER QUERY:
 {user_message}
 
 Executive Response:

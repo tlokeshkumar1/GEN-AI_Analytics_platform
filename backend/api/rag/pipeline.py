@@ -152,15 +152,18 @@ class RAGPipeline:
     # ── Main Pipeline ─────────────────────────────────────────────────────────
 
     def run(self, user_message: str, top_k: int = 15,
-            event_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, Any]:
+            event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+            chat_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         """
         Enhanced hybrid RAG pipeline with intent detection and structured analytics.
         Returns a dict compatible with both ChatResponse and EnhancedChatResponse.
         Accepts an optional event_callback for real-time stage streaming.
+        Accepts an optional chat_history for multi-turn conversation context.
         """
         ctx = RequestContext()
         processing_steps = []
         cb = event_callback
+        self._chat_history = chat_history or []
 
         try:
             # ── Stage 1: Check for Order ID lookup (preserved) ────────────────
@@ -403,7 +406,7 @@ class RAGPipeline:
 
         t0 = time.time()
         # Build RAG prompt using Vector DB retrieved chunks ONLY
-        formatted_prompt = prompt_builder.build_prompt(user_message, vector_chunks)
+        formatted_prompt = prompt_builder.build_prompt(user_message, vector_chunks, chat_history=self._chat_history)
         reply = generator.generate(formatted_prompt)
         ctx.llm_time_ms = (time.time() - t0) * 1000
         step_llm["status"] = "completed"
@@ -513,7 +516,7 @@ class RAGPipeline:
         steps.append(step_llm)
 
         t0 = time.time()
-        formatted_prompt = prompt_builder.build_prompt(user_message, context_chunks)
+        formatted_prompt = prompt_builder.build_prompt(user_message, context_chunks, chat_history=self._chat_history)
         response_text = generator.generate(formatted_prompt)
         ctx.llm_time_ms = (time.time() - t0) * 1000
 

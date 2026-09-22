@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from api.models.request_models import ChatRequest
 from api.rag.pipeline import rag_pipeline
+from api.services.history_service import history_service
 from api.utils.logger import get_logger
 
 logger = get_logger("routes.chat_stream")
@@ -17,10 +18,47 @@ async def chat_stream(req: ChatRequest, request: Request):
     Server-Sent Events (SSE) endpoint for real-time processing feedback & chat responses.
     Each pipeline stage emits events as they happen via a thread-safe asyncio.Queue,
     so the frontend receives updates in real time rather than after the pipeline completes.
+    Persists both user query and bot response to HANA Cloud.
     """
     # Queue bridges the sync pipeline thread → async SSE generator
     event_queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_event_loop()
+
+    # ── Resolve or create session ─────────────────────────────────────────
+    session_id = req.session_id
+    if not session_id or session_id == "default":
+        subject = history_service._generate_subject(req.message)
+        session_id = history_service.create_session(subject=subject)
+    else:
+        # Ensure session exists
+        existing = history_service.get_session_messages(session_id)
+        if not existing:
+            try:
+                from api.database.connection import db_manager
+                from datetime import datetime
+                conn = db_manager.get_connection()
+                if conn:
+                    cursor = conn.cursor()
+                    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                    cursor.execute(
+                        "INSERT INTO CHAT_SESSIONS (SESSION_ID, SUBJECT, CREATED_AT, UPDATED_AT) VALUES (?, ?, ?, ?)",
+                        (session_id, history_service._generate_subject(req.message)[:255], now, now),
+                    )
+                    conn.commit()
+                    cursor.close()
+                    db_manager.return_connection(conn)
+            except Exception:
+                pass
+
+    # Save user query immediately
+    history_service.save_message(
+        session_id=session_id,
+        role="user",
+        content=req.message,
+    )
+
+    # Load recent history for context-aware RAG
+    chat_history = history_service.get_recent_history(session_id, limit=10)
 
     def stage_callback(event: dict) -> None:
         """Thread-safe callback invoked by the pipeline for each stage transition."""
@@ -30,11 +68,11 @@ async def chat_stream(req: ChatRequest, request: Request):
         pipeline_task = None
         try:
             # Signal that processing has started
-            yield f"data: {json.dumps({'type': 'request_started'})}\n\n"
+            yield f"data: {json.dumps({'type': 'request_started', 'session_id': session_id})}\n\n"
 
             # Run the pipeline in a worker thread, passing the callback
             pipeline_task = asyncio.ensure_future(
-                asyncio.to_thread(rag_pipeline.run, req.message, req.top_k, stage_callback)
+                asyncio.to_thread(rag_pipeline.run, req.message, req.top_k, stage_callback, chat_history)
             )
 
             # Yield stage events as they arrive from the queue
@@ -62,6 +100,23 @@ async def chat_stream(req: ChatRequest, request: Request):
 
             # Get the final result from the pipeline
             result = pipeline_task.result()
+
+            # Save the chatbot response to HANA Cloud
+            history_service.save_message(
+                session_id=session_id,
+                role="assistant",
+                content=result.get("reply", ""),
+                sources=result.get("sources", []),
+                intent=result.get("intent"),
+                metadata={
+                    "chart_type": result.get("chart_type"),
+                    "insights": result.get("insights"),
+                    "graph_image": result.get("graph_image"),
+                },
+            )
+
+            # Inject session_id into result data
+            result["session_id"] = session_id
 
             # Emit final_answer event
             final_answer_event = {
@@ -102,7 +157,7 @@ async def chat_stream(req: ChatRequest, request: Request):
                     "type": "error",
                     "status": "error",
                     "processing": [{"stage": "error", "status": "error", "message": str(e)}],
-                    "session_id": req.session_id or "default"
+                    "session_id": session_id
                 }
             }
             yield f"data: {json.dumps(err_payload)}\n\n"

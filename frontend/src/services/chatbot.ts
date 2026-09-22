@@ -22,6 +22,44 @@ export interface ChatResponse {
   status?: string;
 }
 
+// ── Session Types ────────────────────────────────────────────────────────────
+
+export interface ChatSession {
+  SESSION_ID: string;
+  SUBJECT: string;
+  CREATED_AT: string;
+  UPDATED_AT: string;
+}
+
+export interface ChatMessageRecord {
+  MESSAGE_ID: string;
+  SESSION_ID: string;
+  ROLE: 'user' | 'assistant';
+  CONTENT: string;
+  SOURCES?: Array<{ ID?: string; TEXT_CHUNK?: string; SCORE?: number; METADATA?: string }> | null;
+  INTENT?: string | null;
+  METADATA?: Record<string, any> | null;
+  TIMESTAMP: string;
+}
+
+// ── Session API Functions ────────────────────────────────────────────────────
+
+export const fetchChatSessions = async (): Promise<ChatSession[]> => {
+  const res = await api.get<ChatSession[]>('/chat/sessions');
+  return res.data;
+};
+
+export const fetchSessionMessages = async (sessionId: string): Promise<ChatMessageRecord[]> => {
+  const res = await api.get<ChatMessageRecord[]>(`/chat/sessions/${sessionId}`);
+  return res.data;
+};
+
+export const deleteChatSession = async (sessionId: string): Promise<void> => {
+  await api.delete(`/chat/sessions/${sessionId}`);
+};
+
+// ── Chat Functions ───────────────────────────────────────────────────────────
+
 export const sendChatMessage = async (message: string, sessionId: string = 'default'): Promise<ChatResponse> => {
   const res = await api.post<ChatResponse>('/chat', { message, session_id: sessionId });
   if (res.data && res.data.graph_image && !res.data.graph_image.startsWith('data:')) {

@@ -24,6 +24,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Initialise chat history tables on startup
+@app.on_event("startup")
+def startup_init_chat_tables():
+    try:
+        from api.services.history_service import history_service
+        history_service.init_tables()
+    except Exception as e:
+        import logging
+        logging.getLogger("app").warning(f"Chat history table init skipped: {e}")
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
