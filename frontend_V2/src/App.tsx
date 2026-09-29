@@ -41,7 +41,7 @@ export default function App() {
   const isChat = activePath === 'ai-dashboards-rag-chat';
 
   return (
-    <div className="min-h-screen min-h-dvh bg-[#f0f0ee] text-[#1a1c1b] font-body-md antialiased select-auto w-full overflow-x-hidden flex flex-col">
+    <div className="min-h-screen min-h-dvh bg-[#F8FAFC] text-[#0F172A] font-body-md antialiased select-auto w-full overflow-x-hidden flex flex-col">
       {/* Global Responsive Header */}
       <Header
         activePath={activePath}
@@ -61,7 +61,7 @@ export default function App() {
       {/* Main Content Area - Fluidly & Automatically Determined for Every Screen & Aspect Ratio */}
       <div className="pl-0 lg:pl-[260px] w-full flex-1 transition-all duration-300">
         <main
-          className={`w-full pt-[60px] sm:pt-[72px] bg-[#f9f9f7] ${
+          className={`w-full pt-[60px] sm:pt-[72px] bg-[#F8FAFC] ${
             isChat
               ? 'h-[100dvh] overflow-hidden pb-14 sm:pb-16 lg:pb-0 flex flex-col'
               : 'min-h-screen min-h-dvh pb-24 lg:pb-12'

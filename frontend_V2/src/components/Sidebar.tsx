@@ -89,32 +89,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed left-0 top-0 lg:top-[72px] bottom-0 w-[280px] sm:w-[260px] bg-[#f4f4f2] border-r border-[#e2e3e1] z-50 lg:z-40 flex flex-col justify-between overflow-y-auto select-none transition-transform duration-300 ease-in-out ${
+        className={`fixed left-0 top-0 lg:top-[72px] bottom-0 w-[280px] sm:w-[260px] bg-white border-r border-[#E2E8F0] z-50 lg:z-40 flex flex-col justify-between overflow-y-auto select-none transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         <div className="p-space-md">
           {/* Mobile Drawer Header with Close Button */}
-          <div className="flex lg:hidden items-center justify-between pb-3 mb-2 border-b border-[#e2e3e1]">
+          <div className="flex lg:hidden items-center justify-between pb-3 mb-2 border-b border-[#E2E8F0]">
             <div className="flex flex-col">
-              <span className="font-headline-sm text-[16px] font-semibold text-[#1a1c1b]">
+              <span className="font-headline-sm text-[16px] font-semibold text-[#0F172A]">
                 NEOVATIC
               </span>
-              <span className="text-[10px] text-[#747878] uppercase font-mono">
+              <span className="text-[10px] text-[#64748B] uppercase font-mono">
                 SAP HANA & AI CORE
               </span>
             </div>
             <button
               onClick={onClose}
               aria-label="Close navigation"
-              className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-[#e8e8e6] text-[#1a1c1b]"
+              className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-[#F1F5F9] text-[#0F172A]"
             >
               <span className="material-symbols-outlined text-[20px]">close</span>
             </button>
           </div>
 
           <div className="px-space-sm py-space-xs mb-space-sm flex items-center justify-between">
-            <span className="font-label-sm text-label-sm uppercase tracking-widest text-[#747878] font-semibold">
+            <span className="font-label-sm text-label-sm uppercase tracking-widest text-[#64748B] font-semibold">
               Platform Navigation
             </span>
           </div>
@@ -122,6 +122,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <nav className="flex flex-col gap-1">
             {navItems.map((item) => {
               const isActive = activePath === item.id;
+              const isAiItem = item.id === 'ai-dashboards-rag-chat' || item.id === 'build-your-kpi-graph-studio';
+
+              let activeClasses = 'bg-[#EFF6FF] text-[#1D4ED8] font-medium shadow-xs border border-[#BFDBFE]/80';
+              let activeIconClass = 'text-[#2563EB]';
+              let badgeClasses = 'bg-[#F1F5F9] text-[#475569]';
+
+              if (isActive && isAiItem) {
+                activeClasses = 'bg-[#F5F3FF] text-[#6D28D9] font-medium shadow-xs border border-[#DDD6FE]/80';
+                activeIconClass = 'text-[#7C3AED]';
+              }
+
+              if (item.badge === 'Live') {
+                badgeClasses = isActive ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#DCFCE7] text-[#166534]';
+              } else if (isAiItem) {
+                badgeClasses = isActive ? 'bg-[#EDE9FE] text-[#6D28D9]' : 'bg-[#F3E8FF] text-[#7C3AED]';
+              } else if (item.badge === 'Insight') {
+                badgeClasses = isActive ? 'bg-[#E0F2FE] text-[#0369A1]' : 'bg-[#E0F2FE] text-[#0369A1]';
+              } else if (isActive) {
+                badgeClasses = 'bg-[#DBEAFE] text-[#1D4ED8]';
+              }
+
               return (
                 <button
                   key={item.id}
@@ -131,12 +152,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }}
                   className={`w-full flex items-center justify-between px-space-sm py-2.5 sm:py-2 rounded-xl transition-all font-body-sm text-body-sm text-left ${
                     isActive
-                      ? 'bg-[#111111] text-white font-medium shadow-sm'
-                      : 'text-[#444748] hover:bg-[#e8e8e6] hover:text-[#1a1c1b]'
+                      ? activeClasses
+                      : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A] border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 truncate">
-                    <span className={`material-symbols-outlined text-[17px] ${isActive ? 'text-white' : 'text-[#747878]'}`}>
+                    <span className={`material-symbols-outlined text-[17px] ${isActive ? activeIconClass : 'text-[#64748B]'}`}>
                       {item.icon}
                     </span>
                     <span className="truncate">{item.label}</span>
@@ -144,11 +165,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                   {item.badge && (
                     <span
-                      className={`font-label-sm text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${
-                        isActive
-                          ? 'bg-[#e2e3e1] text-[#1a1c1b]'
-                          : 'bg-[#e2e3e1] text-[#1a1c1b]'
-                      }`}
+                      className={`font-label-sm text-[10px] px-2 py-0.5 rounded-full shrink-0 font-medium ${badgeClasses}`}
                     >
                       {item.badge}
                     </span>
@@ -160,14 +177,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* HANA Operational Status Footer Container */}
-        <div className="p-space-md bg-[#e8e8e6]/60 m-space-sm rounded-xl border border-[#dadad8]/40 mb-16 lg:mb-space-sm">
+        <div className="p-space-md bg-[#F8FAFC] m-space-sm rounded-xl border border-[#E2E8F0] mb-16 lg:mb-space-sm">
           <div className="flex items-center gap-1.5 mb-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#111111]"></span>
-            <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-[#1a1c1b]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] shadow-[0_0_6px_rgba(22,163,74,0.5)]"></span>
+            <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-[#0F172A]">
               HANA Cloud Operational
             </span>
           </div>
-          <p className="font-label-sm text-label-sm text-[#747878] leading-tight">
+          <p className="font-label-sm text-label-sm text-[#64748B] leading-tight">
             Python Venv · SAP BTP MTA Architecture v1.0.0
           </p>
         </div>

@@ -63,15 +63,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onNavigate }) =>
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-space-md">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-            <span className="font-label-sm uppercase tracking-widest text-outline font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]"></span>
+            <span className="font-label-sm uppercase tracking-widest text-[#64748B] font-semibold">
               SECURITY AUDIT · RBAC ACCESS CONTROLS
             </span>
           </div>
-          <h1 className="font-headline-xl text-on-surface font-semibold tracking-tight">
+          <h1 className="font-headline-xl text-[#0F172A] font-semibold tracking-tight">
             User Management & RBAC Roles
           </h1>
-          <p className="font-body-md text-on-surface-variant mt-1">
+          <p className="font-body-md text-[#475569] mt-1">
             Enterprise identity governance linked with SAP BTP Trust Configuration and OAuth SSO.
           </p>
         </div>
@@ -79,29 +79,29 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onNavigate }) =>
         <div className="flex items-center gap-2 shrink-0 self-start md:self-end mt-2 md:mt-0">
           <button 
             onClick={() => showToast('Operator invitation link copied and dispatched')}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-surface-container-lowest text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm border border-[#e2e3e1] whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-xl bg-white text-[#0F172A] font-label-md text-label-md hover:bg-[#F1F5F9] transition-colors shadow-xs border border-[#CBD5E1] whitespace-nowrap shrink-0"
           >
-            <span className="material-symbols-outlined text-[16px] text-outline">person_add</span>
+            <span className="material-symbols-outlined text-[16px] text-[#2563EB]">person_add</span>
             <span>Invite Operator</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-[#eeeeec] overflow-hidden">
-        <div className="p-space-lg border-b border-[#eeeeec] flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-xs border border-[#E2E8F0] overflow-hidden">
+        <div className="p-space-lg border-b border-[#E2E8F0] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="font-headline-sm font-semibold">Enterprise Operator Accounts</span>
-            <span className="px-2.5 py-0.5 rounded-full bg-surface-container text-xs font-mono">
+            <span className="font-headline-sm font-semibold text-[#0F172A]">Enterprise Operator Accounts</span>
+            <span className="px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-xs font-mono text-[#475569] border border-[#E2E8F0]">
               {users.length} Active Accounts
             </span>
           </div>
-          <span className="text-xs text-outline">BTP Identity Authentication Service (IAS)</span>
+          <span className="text-xs text-[#64748B]">BTP Identity Authentication Service (IAS)</span>
         </div>
 
         <div className="overflow-x-auto scroll-touch">
           <table className="w-full text-left font-body-sm text-body-sm min-w-[580px]">
             <thead>
-              <tr className="bg-surface-container-low text-on-surface-variant font-label-md uppercase tracking-wider">
+              <tr className="bg-[#F8FAFC] text-[#475569] font-label-md uppercase tracking-wider border-b border-[#E2E8F0]">
                 <th className="py-3 px-6 font-semibold">User / Identity</th>
                 <th className="py-3 px-6 font-semibold">Role Descriptor</th>
                 <th className="py-3 px-6 font-semibold">Security Tier</th>
@@ -109,32 +109,32 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onNavigate }) =>
                 <th className="py-3 px-6 font-semibold text-right">Last Login</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#eeeeec]">
+            <tbody className="divide-y divide-[#E2E8F0]">
               {users.map(u => (
-                <tr key={u.id} className="hover:bg-surface-container-low transition-colors">
+                <tr key={u.id} className="hover:bg-[#F8FAFC] transition-colors">
                   <td className="py-4 px-6">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center font-semibold text-xs border border-[#e2e3e1]">
+                      <div className="w-8 h-8 rounded-full bg-[#EFF6FF] text-[#1D4ED8] flex items-center justify-center font-semibold text-xs border border-[#BFDBFE]">
                         {u.name.slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <div className="font-semibold text-on-surface">{u.name}</div>
-                        <div className="text-xs text-outline">{u.email}</div>
+                        <div className="font-semibold text-[#0F172A]">{u.name}</div>
+                        <div className="text-xs text-[#64748B]">{u.email}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="py-4 px-6 text-on-surface">{u.role}</td>
+                  <td className="py-4 px-6 text-[#0F172A] font-medium">{u.role}</td>
                   <td className="py-4 px-6">
-                    <span className="px-2 py-0.5 rounded-full bg-surface-container text-xs font-mono text-on-surface font-medium">
+                    <span className="px-2.5 py-0.5 rounded-md bg-[#F1F5F9] text-xs font-mono text-[#334155] border border-[#E2E8F0] font-medium">
                       {u.tier}
                     </span>
                   </td>
                   <td className="py-4 px-6">
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium">
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] text-xs font-medium">
                       {u.status}
                     </span>
                   </td>
-                  <td className="py-4 px-6 text-right font-mono text-outline">{u.lastLogin}</td>
+                  <td className="py-4 px-6 text-right font-mono text-[#64748B]">{u.lastLogin}</td>
                 </tr>
               ))}
             </tbody>

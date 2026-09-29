@@ -66,15 +66,15 @@ export const ReportsLibrary: React.FC<ReportsLibraryProps> = ({ onNavigate }) =>
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-space-md">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-            <span className="font-label-sm uppercase tracking-widest text-outline font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]"></span>
+            <span className="font-label-sm uppercase tracking-widest text-[#64748B] font-semibold">
               ENTERPRISE REPORTING · SAP BTP DISPATCH
             </span>
           </div>
-          <h1 className="font-headline-xl text-on-surface font-semibold tracking-tight">
+          <h1 className="font-headline-xl text-[#0F172A] font-semibold tracking-tight">
             Reports Library
           </h1>
-          <p className="font-body-md text-on-surface-variant mt-1">
+          <p className="font-body-md text-[#475569] mt-1">
             Certified fiscal reports, automated board decks, and compliance exports generated from the HANA Column Store.
           </p>
         </div>
@@ -82,9 +82,9 @@ export const ReportsLibrary: React.FC<ReportsLibraryProps> = ({ onNavigate }) =>
         <div className="flex items-center gap-2 shrink-0 self-start md:self-end mt-2 md:mt-0">
           <button 
             onClick={() => onNavigate('build-your-kpi-graph-studio')}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-surface-container-lowest text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm border border-[#e2e3e1] whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-xl bg-white text-[#0F172A] font-label-md text-label-md hover:bg-[#F1F5F9] transition-colors shadow-xs border border-[#CBD5E1] whitespace-nowrap shrink-0"
           >
-            <span className="material-symbols-outlined text-[16px] text-outline">add</span>
+            <span className="material-symbols-outlined text-[16px] text-[#2563EB]">add</span>
             <span>Create New Report</span>
           </button>
         </div>
@@ -94,19 +94,19 @@ export const ReportsLibrary: React.FC<ReportsLibraryProps> = ({ onNavigate }) =>
         {reports.map((rep) => (
           <div 
             key={rep.id}
-            className="bg-surface-container-lowest p-6 rounded-2xl shadow-sm border border-[#eeeeec] flex flex-col justify-between hover:bg-surface-container-low transition-colors"
+            className="bg-white p-6 rounded-2xl shadow-xs border border-[#E2E8F0] flex flex-col justify-between hover:border-[#CBD5E1] transition-all"
           >
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-outline">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
                   {rep.type}
                 </span>
-                <span className="text-xs font-mono text-outline">{rep.period}</span>
+                <span className="text-xs font-mono text-[#64748B] bg-[#F1F5F9] px-2 py-0.5 rounded-md border border-[#E2E8F0]">{rep.period}</span>
               </div>
-              <h3 className="font-headline-sm font-semibold text-on-surface mb-2">
+              <h3 className="font-headline-sm font-semibold text-[#0F172A] mb-2">
                 {rep.title}
               </h3>
-              <div className="flex items-center gap-3 text-xs text-outline mb-4">
+              <div className="flex items-center gap-3 text-xs text-[#64748B] mb-4">
                 <span>{rep.format}</span>
                 <span>•</span>
                 <span>{rep.size}</span>
@@ -115,16 +115,17 @@ export const ReportsLibrary: React.FC<ReportsLibraryProps> = ({ onNavigate }) =>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-[#eeeeec] flex items-center justify-between">
-              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+            <div className="pt-4 border-t border-[#E2E8F0] flex items-center justify-between">
+              <span className="text-xs font-medium text-[#15803D] bg-[#DCFCE7] border border-[#BBF7D0] px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px] text-[#16A34A]">verified</span>
                 Audit Signed
               </span>
               <button 
                 onClick={() => handleDownload(rep.id, rep.title)}
                 disabled={downloadingId === rep.id}
-                className="px-4 py-1.5 rounded-full bg-surface-container hover:bg-surface-container-high text-xs font-medium transition-colors flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] text-xs font-medium transition-colors flex items-center gap-1.5"
               >
-                <span className={`material-symbols-outlined text-[16px] ${downloadingId === rep.id ? 'animate-spin' : ''}`}>
+                <span className={`material-symbols-outlined text-[16px] text-[#2563EB] ${downloadingId === rep.id ? 'animate-spin' : ''}`}>
                   {downloadingId === rep.id ? 'refresh' : 'download'}
                 </span>
                 <span>{downloadingId === rep.id ? 'Exporting...' : 'Download'}</span>

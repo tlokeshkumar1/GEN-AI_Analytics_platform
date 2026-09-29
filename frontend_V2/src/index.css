@@ -1,11 +1,84 @@
 @import "tailwindcss";
 
+:root {
+  /* =========================
+     FOUNDATION / NEUTRALS (60%)
+     ========================= */
+  --color-background: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-surface-secondary: #F1F5F9;
+  --color-surface-tertiary: #E2E8F0;
+
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748B;
+
+  --color-border: #E2E8F0;
+  --color-border-strong: #CBD5E1;
+
+  /* =========================
+     PRIMARY / INTERACTIVE (20%)
+     ========================= */
+  --color-primary: #2563EB;
+  --color-primary-hover: #1D4ED8;
+  --color-primary-soft: #DBEAFE;
+
+  /* =========================
+     AI / GENAI (10%)
+     ========================= */
+  --color-ai: #7C3AED;
+  --color-ai-hover: #6D28D9;
+  --color-ai-soft: #F3E8FF;
+
+  /* =========================
+     SECONDARY / ANALYTICS (10%)
+     ========================= */
+  --color-indigo: #4F46E5;
+  --color-indigo-soft: #EEF2FF;
+
+  --color-teal: #0F766E;
+  --color-teal-soft: #CCFBF1;
+
+  --color-cyan: #0891B2;
+  --color-cyan-soft: #CFFAFE;
+
+  --color-emerald: #059669;
+  --color-emerald-soft: #D1FAE5;
+
+  /* =========================
+     SEMANTIC
+     ========================= */
+  --color-success: #16A34A;
+  --color-success-soft: #DCFCE7;
+
+  --color-warning: #D97706;
+  --color-warning-soft: #FEF3C7;
+
+  --color-error: #DC2626;
+  --color-error-soft: #FEE2E2;
+
+  --color-info: #0284C7;
+  --color-info-soft: #E0F2FE;
+
+  /* =========================
+     DATA VISUALIZATION
+     ========================= */
+  --chart-blue: #3B82F6;
+  --chart-indigo: #6366F1;
+  --chart-purple: #8B5CF6;
+  --chart-teal: #14B8A6;
+  --chart-cyan: #06B6D4;
+  --chart-green: #22C55E;
+  --chart-amber: #F59E0B;
+  --chart-rose: #F43F5E;
+}
+
 @layer base {
   html, body {
     margin: 0;
     padding: 0;
-    background-color: #f9f9f7;
-    color: #1a1c1b;
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
     font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-feature-settings: "tnum" 1;
     -webkit-font-smoothing: antialiased;
@@ -33,11 +106,11 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #c4c7c7;
+    background: var(--color-border-strong);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #747878;
+    background: var(--color-text-muted);
   }
 }
 
@@ -57,29 +130,35 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom Design Tokens & Typography Classes */
-.bg-surface { background-color: #f9f9f7; }
-.bg-surface-dim { background-color: #dadad8; }
-.bg-surface-bright { background-color: #f9f9f7; }
-.bg-surface-container-lowest { background-color: #ffffff; }
-.bg-surface-container-low { background-color: #f4f4f2; }
-.bg-surface-container { background-color: #eeeeec; }
-.bg-surface-container-high { background-color: #e8e8e6; }
-.bg-surface-container-highest { background-color: #e2e3e1; }
-.bg-primary { background-color: #1a1c1b; }
-.bg-secondary { background-color: #5e5e5e; }
-.bg-primary-container { background-color: #1c1b1b; }
-.bg-inverse-surface { background-color: #2f3130; }
+/* Custom Design Tokens & Semantic Classes */
+.bg-surface { background-color: var(--color-background); }
+.bg-surface-dim { background-color: var(--color-surface-tertiary); }
+.bg-surface-bright { background-color: var(--color-surface); }
+.bg-surface-container-lowest { background-color: var(--color-surface); }
+.bg-surface-container-low { background-color: var(--color-background); }
+.bg-surface-container { background-color: var(--color-surface-secondary); }
+.bg-surface-container-high { background-color: var(--color-surface-tertiary); }
+.bg-surface-container-highest { background-color: var(--color-border-strong); }
+.bg-primary { background-color: var(--color-primary); }
+.bg-secondary { background-color: var(--color-indigo); }
+.bg-primary-container { background-color: var(--color-primary-soft); }
+.bg-inverse-surface { background-color: var(--color-text-primary); }
 
-.text-primary { color: #1a1c1b; }
-.text-secondary { color: #5e5e5e; }
-.text-on-surface { color: #1a1c1b; }
-.text-on-surface-variant { color: #444748; }
-.text-outline { color: #747878; }
-.text-outline-variant { color: #c4c7c7; }
-.text-inverse-on-surface { color: #f1f1ef; }
-.text-inverse-primary { color: #c8c6c5; }
-.text-on-primary { color: #ffffff; }
+.text-primary { color: var(--color-primary); }
+.text-secondary { color: var(--color-indigo); }
+.text-on-surface { color: var(--color-text-primary); }
+.text-on-surface-variant { color: var(--color-text-secondary); }
+.text-outline { color: var(--color-text-muted); }
+.text-outline-variant { color: #94A3B8; }
+.text-inverse-on-surface { color: #F8FAFC; }
+.text-inverse-primary { color: #93C5FD; }
+.text-on-primary { color: #FFFFFF; }
+
+/* AI Specific utilities */
+.bg-ai { background-color: var(--color-ai); }
+.bg-ai-soft { background-color: var(--color-ai-soft); }
+.text-ai { color: var(--color-ai); }
+.border-ai-soft { border-color: #DDD6FE; }
 
 /* Fluid Responsive Typography supporting all screen sizes & aspect ratios */
 .font-headline-xl {

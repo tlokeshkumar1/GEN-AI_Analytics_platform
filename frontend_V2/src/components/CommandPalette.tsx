@@ -73,23 +73,23 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         className="fixed inset-0" 
         onClick={onClose} 
       />
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-[#dadad8] overflow-hidden flex flex-col z-10 max-h-[85vh] sm:max-h-[75vh]">
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-[#CBD5E1] overflow-hidden flex flex-col z-10 max-h-[85vh] sm:max-h-[75vh]">
         {/* Search Input Bar */}
-        <div className="flex items-center px-3 sm:px-4 py-3 border-b border-[#eeeeec] gap-2.5">
-          <span className="material-symbols-outlined text-[#747878] text-[20px]">search</span>
+        <div className="flex items-center px-3 sm:px-4 py-3 border-b border-[#E2E8F0] gap-2.5">
+          <span className="material-symbols-outlined text-[#64748B] text-[20px]">search</span>
           <input
             autoFocus
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search screens, prompts, or schema..."
-            className="w-full bg-transparent text-[#1a1c1b] placeholder:text-[#747878] font-body-md text-body-md focus:outline-none"
+            className="w-full bg-transparent text-[#0F172A] placeholder:text-[#64748B] font-body-md text-body-md focus:outline-none"
           />
           <div className="flex items-center gap-1.5">
-            <kbd className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono bg-[#eeeeec] text-[#747878] rounded">ESC</kbd>
+            <kbd className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0] rounded">ESC</kbd>
             <button
               onClick={onClose}
-              className="sm:hidden w-8 h-8 rounded-lg flex items-center justify-center text-[#747878] hover:bg-[#f4f4f2]"
+              className="sm:hidden w-8 h-8 rounded-lg flex items-center justify-center text-[#64748B] hover:bg-[#F1F5F9]"
               aria-label="Close search"
             >
               <span className="material-symbols-outlined text-[18px]">close</span>
@@ -98,10 +98,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         {/* Results List */}
-        <div className="overflow-y-auto p-2 divide-y divide-[#f4f4f2]">
+        <div className="overflow-y-auto p-2 divide-y divide-[#F1F5F9]">
           {/* Navigation Section */}
           <div className="py-2">
-            <div className="px-3 pb-1 text-[10px] uppercase font-semibold text-[#747878] tracking-wider">
+            <div className="px-3 pb-1 text-[10px] uppercase font-semibold text-[#64748B] tracking-wider">
               Screens & Workspaces
             </div>
             {filteredNav.map((item) => (
@@ -111,22 +111,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onNavigate(item.id);
                   onClose();
                 }}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-[#f4f4f2] text-left transition-colors group"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-[#F1F5F9] text-left transition-colors group"
               >
                 <div className="flex items-center gap-3">
-                  <span className="material-symbols-outlined text-[#747878] group-hover:text-[#1a1c1b] text-[18px]">
+                  <span className="material-symbols-outlined text-[#64748B] group-hover:text-[#2563EB] text-[18px] transition-colors">
                     {item.icon}
                   </span>
                   <div className="flex flex-col">
-                    <span className="font-label-md text-label-md font-medium text-[#1a1c1b]">
+                    <span className="font-label-md text-label-md font-medium text-[#0F172A]">
                       {item.title}
                     </span>
-                    <span className="font-body-sm text-[11px] text-[#747878]">
+                    <span className="font-body-sm text-[11px] text-[#64748B]">
                       {item.hint}
                     </span>
                   </div>
                 </div>
-                <span className="material-symbols-outlined text-[14px] text-outline opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="material-symbols-outlined text-[14px] text-[#64748B] opacity-0 group-hover:opacity-100 transition-opacity">
                   arrow_forward
                 </span>
               </button>
@@ -135,7 +135,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
           {/* Quick Prompts Section */}
           <div className="py-2">
-            <div className="px-3 pb-1 text-[10px] uppercase font-semibold text-[#747878] tracking-wider">
+            <div className="px-3 pb-1 text-[10px] uppercase font-semibold text-[#64748B] tracking-wider">
               Analytical Prompts
             </div>
             {quickPrompts.map((prompt, idx) => (
@@ -148,15 +148,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onNavigate('build-your-kpi-graph-studio');
                   onClose();
                 }}
-                className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-[#f4f4f2] text-left transition-colors group"
+                className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-[#F5F3FF] text-left transition-colors group"
               >
                 <div className="flex items-center gap-2.5 truncate">
-                  <span className="material-symbols-outlined text-[#547A9B] text-[16px]">bolt</span>
-                  <span className="font-body-sm text-[12px] text-[#1a1c1b] truncate">
+                  <span className="material-symbols-outlined text-[#7C3AED] text-[16px]">bolt</span>
+                  <span className="font-body-sm text-[12px] text-[#0F172A] truncate">
                     {prompt}
                   </span>
                 </div>
-                <span className="font-label-sm text-[10px] text-[#747878] shrink-0">Open Graph</span>
+                <span className="font-label-sm text-[10px] text-[#7C3AED] font-medium shrink-0">Open Graph</span>
               </button>
             ))}
           </div>
@@ -164,20 +164,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {/* Schema Columns Preview */}
           {filteredColumns.length > 0 && (
             <div className="py-2">
-              <div className="px-3 pb-1 text-[10px] uppercase font-semibold text-[#747878] tracking-wider">
+              <div className="px-3 pb-1 text-[10px] uppercase font-semibold text-[#64748B] tracking-wider">
                 HANA Schema Columns ({SCHEMA_COLUMNS.length} Available)
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 px-1">
                 {filteredColumns.map((col, idx) => (
                   <div 
                     key={idx}
-                    className="p-2 rounded-lg bg-[#f9f9f7] border border-[#eeeeec] flex items-center justify-between"
+                    className="p-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between"
                   >
                     <div>
-                      <div className="font-label-sm font-semibold text-[#1a1c1b]">{col.name}</div>
-                      <div className="text-[10px] text-[#747878]">{col.dataType}</div>
+                      <div className="font-label-sm font-semibold text-[#0F172A]">{col.name}</div>
+                      <div className="text-[10px] text-[#64748B]">{col.dataType}</div>
                     </div>
-                    <span className="text-[9px] px-1.5 py-0.5 bg-[#eeeeec] rounded font-mono text-[#1a1c1b]">
+                    <span className="text-[9px] px-1.5 py-0.5 bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] rounded font-mono">
                       {col.type}
                     </span>
                   </div>
@@ -188,13 +188,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 bg-[#f9f9f7] border-t border-[#eeeeec] flex items-center justify-between text-[11px] text-[#747878]">
+        <div className="px-4 py-2 bg-[#F8FAFC] border-t border-[#E2E8F0] flex items-center justify-between text-[11px] text-[#64748B]">
           <div className="flex items-center gap-2">
-            <span>Use <kbd className="px-1 bg-[#eeeeec] rounded">↑</kbd> <kbd className="px-1 bg-[#eeeeec] rounded">↓</kbd> to navigate</span>
+            <span>Use <kbd className="px-1 bg-white border border-[#CBD5E1] rounded shadow-2xs">↑</kbd> <kbd className="px-1 bg-white border border-[#CBD5E1] rounded shadow-2xs">↓</kbd> to navigate</span>
             <span>·</span>
-            <span><kbd className="px-1 bg-[#eeeeec] rounded">↵</kbd> to select</span>
+            <span><kbd className="px-1 bg-white border border-[#CBD5E1] rounded shadow-2xs">↵</kbd> to select</span>
           </div>
-          <span>SAP HANA In-Memory Column Store</span>
+          <span className="font-medium text-[#475569]">SAP HANA In-Memory Column Store</span>
         </div>
       </div>
     </div>

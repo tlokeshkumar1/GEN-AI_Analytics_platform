@@ -67,15 +67,15 @@ export const DataSources: React.FC<DataSourcesProps> = ({ onNavigate }) => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-space-md">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-            <span className="font-label-sm uppercase tracking-widest text-outline font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#0F766E]"></span>
+            <span className="font-label-sm uppercase tracking-widest text-[#64748B] font-semibold">
               INFRASTRUCTURE CONNECTORS · BTP INTEGRATION SUITE
             </span>
           </div>
-          <h1 className="font-headline-xl text-on-surface font-semibold tracking-tight">
+          <h1 className="font-headline-xl text-[#0F172A] font-semibold tracking-tight">
             Data Sources & HDI Containers
           </h1>
-          <p className="font-body-md text-on-surface-variant mt-1">
+          <p className="font-body-md text-[#475569] mt-1">
             Active connections to SAP HANA Cloud, S/4HANA transactional endpoints, and AI Core vector services.
           </p>
         </div>
@@ -83,73 +83,80 @@ export const DataSources: React.FC<DataSourcesProps> = ({ onNavigate }) => {
         <div className="flex items-center gap-2 shrink-0 self-start md:self-end mt-2 md:mt-0">
           <button 
             onClick={() => onNavigate('upload-dataset')}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-surface-container-lowest text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm border border-[#e2e3e1] whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-xl bg-white text-[#0F172A] font-label-md text-label-md hover:bg-[#F1F5F9] transition-colors shadow-xs border border-[#CBD5E1] whitespace-nowrap shrink-0"
           >
-            <span className="material-symbols-outlined text-[16px] text-outline">add_link</span>
+            <span className="material-symbols-outlined text-[16px] text-[#0F766E]">add_link</span>
             <span>Add Data Connection</span>
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
-        {sources.map(src => (
-          <div 
-            key={src.id}
-            className="bg-surface-container-lowest p-6 rounded-2xl shadow-sm border border-[#eeeeec] flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface">
-                    <span className="material-symbols-outlined text-[18px]">{src.icon}</span>
+        {sources.map(src => {
+          const isAiSource = src.id === 'src-3';
+          const iconColor = isAiSource ? 'text-[#7C3AED] bg-[#F5F3FF] border-[#DDD6FE]' : 'text-[#0F766E] bg-[#F0FDFA] border-[#CCFBF1]';
+
+          return (
+            <div 
+              key={src.id}
+              className="bg-white p-6 rounded-2xl shadow-xs border border-[#E2E8F0] flex flex-col justify-between hover:border-[#CBD5E1] transition-all"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-xl border flex items-center justify-center ${iconColor}`}>
+                      <span className="material-symbols-outlined text-[18px]">{src.icon}</span>
+                    </div>
+                    <div>
+                      <h3 className="font-label-md font-semibold text-[#0F172A]">{src.name}</h3>
+                      <span className="text-xs text-[#64748B]">{src.type}</span>
+                    </div>
+                  </div>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium border ${
+                    src.status === 'Connected' 
+                      ? 'bg-[#DCFCE7] text-[#15803D] border-[#BBF7D0]' 
+                      : 'bg-[#F1F5F9] text-[#64748B] border-[#E2E8F0]'
+                  }`}>
+                    {src.status}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl font-mono text-xs text-[#475569] mb-3 break-all">
+                  {src.host}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-xs py-2 border-t border-b border-[#E2E8F0]">
+                  <div>
+                    <span className="text-[#64748B] block text-[11px]">Latency</span>
+                    <span className="font-mono font-medium text-[#0F172A]">{src.latency}</span>
                   </div>
                   <div>
-                    <h3 className="font-label-md font-semibold text-on-surface">{src.name}</h3>
-                    <span className="text-xs text-outline">{src.type}</span>
+                    <span className="text-[#64748B] block text-[11px]">Last Sync</span>
+                    <span className="text-[#0F172A] font-medium">{src.lastSync}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#64748B] block text-[11px]">Footprint</span>
+                    <span className="text-[#0F172A] font-medium">{src.records}</span>
                   </div>
                 </div>
-                <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
-                  src.status === 'Connected' ? 'bg-emerald-50 text-emerald-700' : 'bg-surface-container text-outline'
-                }`}>
-                  {src.status}
-                </span>
               </div>
 
-              <div className="p-3 bg-surface-container-low rounded-xl font-mono text-xs text-outline mb-3 break-all">
-                {src.host}
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 text-xs py-2 border-t border-b border-[#eeeeec]">
-                <div>
-                  <span className="text-outline block">Latency</span>
-                  <span className="font-mono font-medium text-on-surface">{src.latency}</span>
-                </div>
-                <div>
-                  <span className="text-outline block">Last Sync</span>
-                  <span className="text-on-surface font-medium">{src.lastSync}</span>
-                </div>
-                <div>
-                  <span className="text-outline block">Footprint</span>
-                  <span className="text-on-surface font-medium">{src.records}</span>
-                </div>
+              <div className="pt-4 flex justify-between items-center mt-3">
+                <span className="text-xs text-[#64748B] font-mono">BTP HDI Secure Tunnel</span>
+                <button 
+                  onClick={() => testConnection(src.id)}
+                  disabled={testingId === src.id}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-xs font-medium text-[#0F172A] transition-colors flex items-center gap-1.5"
+                >
+                  <span className={`material-symbols-outlined text-[14px] text-[#2563EB] ${testingId === src.id ? 'animate-spin' : ''}`}>
+                    {testingId === src.id ? 'refresh' : 'speed'}
+                  </span>
+                  <span>{testingId === src.id ? 'Pinging...' : 'Ping Test'}</span>
+                </button>
               </div>
             </div>
-
-            <div className="pt-4 flex justify-between items-center mt-3">
-              <span className="text-xs text-outline font-mono">BTP HDI Secure Tunnel</span>
-              <button 
-                onClick={() => testConnection(src.id)}
-                disabled={testingId === src.id}
-                className="px-3 py-1 rounded-full bg-surface-container hover:bg-surface-container-high text-xs font-medium transition-colors flex items-center gap-1"
-              >
-                <span className={`material-symbols-outlined text-[14px] ${testingId === src.id ? 'animate-spin' : ''}`}>
-                  {testingId === src.id ? 'refresh' : 'speed'}
-                </span>
-                <span>{testingId === src.id ? 'Pinging...' : 'Ping Test'}</span>
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

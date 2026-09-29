@@ -66,15 +66,15 @@ export const AlertsNotifications: React.FC<AlertsNotificationsProps> = ({ onNavi
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-space-md">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-            <span className="font-label-sm uppercase tracking-widest text-outline font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]"></span>
+            <span className="font-label-sm uppercase tracking-widest text-[#64748B] font-semibold">
               REAL-TIME MONITORING · SAP HANA HEALTH
             </span>
           </div>
-          <h1 className="font-headline-xl text-on-surface font-semibold tracking-tight">
+          <h1 className="font-headline-xl text-[#0F172A] font-semibold tracking-tight">
             Alerts & Notifications
           </h1>
-          <p className="font-body-md text-on-surface-variant mt-1">
+          <p className="font-body-md text-[#475569] mt-1">
             Real-time threshold breaches, automated margin anomaly warnings, and vector indexing triggers.
           </p>
         </div>
@@ -82,32 +82,32 @@ export const AlertsNotifications: React.FC<AlertsNotificationsProps> = ({ onNavi
         <div className="flex items-center gap-2 shrink-0 self-start md:self-end mt-2 md:mt-0">
           <button 
             onClick={() => setAlerts(prev => prev.map(a => ({ ...a, status: 'Resolved' })))}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-surface-container-lowest text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm border border-[#e2e3e1] whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-white text-[#475569] hover:text-[#0F172A] font-label-md text-label-md hover:bg-[#F1F5F9] transition-colors shadow-2xs border border-[#CBD5E1] whitespace-nowrap shrink-0"
           >
-            <span className="material-symbols-outlined text-[16px] text-outline">done_all</span>
+            <span className="material-symbols-outlined text-[16px] text-[#64748B]">done_all</span>
             <span>Mark All Resolved</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-sm border border-[#eeeeec] flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#eeeeec] pb-4">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E2E8F0] flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] pb-4">
           <div className="flex items-center gap-2">
-            <span className="font-headline-sm font-semibold">System Notification Stream</span>
-            <span className="px-2 py-0.5 rounded-full bg-surface-container text-xs font-mono">
+            <span className="font-headline-sm font-semibold text-[#0F172A]">System Notification Stream</span>
+            <span className="px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569] text-xs font-mono font-medium border border-[#E2E8F0]">
               {filteredAlerts.length} Events
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 p-1 rounded-full bg-surface-container-lowest border border-[#e2e3e1] shadow-2xs self-start sm:self-auto">
+          <div className="flex items-center gap-1.5 p-1 rounded-full bg-[#F1F5F9] border border-[#E2E8F0] shadow-2xs self-start sm:self-auto">
             {(['All', 'Active', 'Resolved'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
                 className={`h-8 px-4 rounded-full text-xs font-medium transition-colors flex items-center justify-center whitespace-nowrap ${
                   filter === tab
-                    ? 'bg-surface-container text-on-surface font-semibold shadow-xs'
-                    : 'bg-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+                    ? 'bg-[#2563EB] text-white font-semibold shadow-xs'
+                    : 'bg-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-white/60'
                 }`}
               >
                 {tab}
@@ -120,34 +120,38 @@ export const AlertsNotifications: React.FC<AlertsNotificationsProps> = ({ onNavi
           {filteredAlerts.map(alert => (
             <div 
               key={alert.id}
-              className="p-4 rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3 border border-[#eeeeec]"
+              className="p-4 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3 border border-[#E2E8F0]"
             >
               <div className="flex items-start gap-3">
-                <span className={`w-2.5 h-2.5 rounded-full ${alert.color} mt-1.5 shrink-0`}></span>
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  alert.severity === 'Critical' ? 'bg-[#DC2626]' :
+                  alert.severity === 'Warning' ? 'bg-[#D97706]' :
+                  'bg-[#2563EB]'
+                } mt-1.5 shrink-0`}></span>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-label-md font-semibold text-on-surface">{alert.title}</span>
-                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-surface-container text-outline">
+                    <span className="font-label-md font-semibold text-[#0F172A]">{alert.title}</span>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-white text-[#64748B] border border-[#E2E8F0] font-semibold">
                       {alert.severity}
                     </span>
-                    <span className="text-xs text-outline">{alert.time}</span>
+                    <span className="text-xs text-[#64748B]">{alert.time}</span>
                   </div>
-                  <p className="font-body-sm text-outline mt-1 max-w-2xl">{alert.desc}</p>
+                  <p className="font-body-sm text-[#475569] mt-1 max-w-2xl">{alert.desc}</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
                 <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                  alert.status === 'Active' ? 'bg-red-50 text-red-700' :
-                  alert.status === 'Acknowledged' ? 'bg-amber-50 text-amber-700' :
-                  'bg-emerald-50 text-emerald-700'
+                  alert.status === 'Active' ? 'bg-[#FEE2E2] text-[#DC2626] border border-[#FECACA]' :
+                  alert.status === 'Acknowledged' ? 'bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]' :
+                  'bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0]'
                 }`}>
                   {alert.status}
                 </span>
                 {alert.status !== 'Resolved' && (
                   <button 
                     onClick={() => toggleAcknowledge(alert.id)}
-                    className="px-3 py-1 rounded-full bg-white hover:bg-neutral-100 text-xs font-medium border border-[#dadad8] transition-colors"
+                    className="px-3.5 py-1 rounded-full bg-white hover:bg-[#F1F5F9] text-[#0F172A] text-xs font-medium border border-[#CBD5E1] transition-colors shadow-2xs"
                   >
                     {alert.status === 'Active' ? 'Acknowledge' : 'Resolve'}
                   </button>

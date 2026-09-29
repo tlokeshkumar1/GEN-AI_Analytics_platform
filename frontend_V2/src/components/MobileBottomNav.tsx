@@ -22,19 +22,22 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   return (
     <nav 
       aria-label="Mobile Bottom Navigation"
-      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-[#f9f9f7]/95 backdrop-blur-md border-t border-[#e2e3e1] pb-safe"
+      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-white/95 backdrop-blur-md border-t border-[#E2E8F0] pb-safe"
     >
       <div className="grid grid-cols-6 items-center h-14 sm:h-16 px-0.5 sm:px-1 max-w-lg mx-auto">
         {tabs.map((tab) => {
           const isActive = activePath === tab.id;
+          const isAiTab = tab.id === 'ai-dashboards-rag-chat' || tab.id === 'build-your-kpi-graph-studio';
+          const activeColor = isAiTab ? 'text-[#7C3AED]' : 'text-[#2563EB]';
+
           return (
             <button
               key={tab.id}
               onClick={() => onNavigate(tab.id)}
               className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-lg transition-colors min-h-[44px] ${
                 isActive
-                  ? 'text-[#111111] font-semibold'
-                  : 'text-[#747878] hover:text-[#1a1c1b]'
+                  ? `${activeColor} font-semibold`
+                  : 'text-[#64748B] hover:text-[#0F172A]'
               }`}
             >
               <span className={`material-symbols-outlined text-[19px] sm:text-[22px] ${isActive ? 'font-bold' : ''}`}>
@@ -50,7 +53,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         {/* More Menu Trigger */}
         <button
           onClick={onOpenDrawer}
-          className="flex flex-col items-center justify-center py-1 px-0.5 rounded-lg transition-colors min-h-[44px] text-[#747878] hover:text-[#1a1c1b]"
+          className="flex flex-col items-center justify-center py-1 px-0.5 rounded-lg transition-colors min-h-[44px] text-[#64748B] hover:text-[#0F172A]"
           aria-label="More navigation items"
         >
           <span className="material-symbols-outlined text-[19px] sm:text-[22px]">

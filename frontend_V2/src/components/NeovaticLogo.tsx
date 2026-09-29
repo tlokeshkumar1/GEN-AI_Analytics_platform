@@ -13,14 +13,14 @@ export const NeovaticLogo: React.FC<NeovaticLogoProps> = ({
 }) => {
   return (
     <div className={`flex items-center gap-2 sm:gap-3 select-none ${className}`}>
-      {/* Brand Mark: Black squircle with white 'N' and blue accent dot */}
+      {/* Brand Mark: Dark squircle with white 'N' and primary blue accent dot */}
       <div 
-        className="relative shrink-0 flex items-center justify-center rounded-[8px] sm:rounded-[9px] bg-[#111111] shadow-sm overflow-hidden"
+        className="relative shrink-0 flex items-center justify-center rounded-[8px] sm:rounded-[9px] bg-[#0F172A] shadow-sm overflow-hidden"
         style={{ width: `${size}px`, height: `${size}px` }}
       >
         <svg 
           viewBox="0 0 40 40" 
-          className="w-full h-full p-1"
+          className="w-full h-full p-1" 
           fill="none" 
           xmlns="http://www.w3.org/2000/svg"
         >
@@ -34,17 +34,17 @@ export const NeovaticLogo: React.FC<NeovaticLogoProps> = ({
             cx="32" 
             cy="11" 
             r="3.5" 
-            fill="#547A9B" 
+            fill="#2563EB" 
           />
         </svg>
       </div>
 
       {showText && (
         <div className="flex flex-col text-left min-w-0">
-          <span className="font-headline-sm text-[15px] sm:text-[17px] leading-tight tracking-tight text-[#1a1c1b] font-semibold truncate">
+          <span className="font-headline-sm text-[15px] sm:text-[17px] leading-tight tracking-tight text-[#0F172A] font-semibold truncate">
             NEOVATIC GEN-AI
           </span>
-          <span className="hidden xs:inline-block font-label-sm text-[9px] sm:text-[10px] leading-tight text-[#747878] uppercase tracking-wider font-semibold truncate">
+          <span className="hidden xs:inline-block font-label-sm text-[9px] sm:text-[10px] leading-tight text-[#64748B] uppercase tracking-wider font-semibold truncate">
             SAP HANA & AI CORE
           </span>
         </div>

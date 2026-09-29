@@ -568,72 +568,72 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
           const lang = lines[0].match(/^[a-zA-Z0-9_-]+$/) ? lines[0] : '';
           const code = (lang ? lines.slice(1) : lines).join('\n');
           return (
-            <div key={i} className="my-2 rounded-xl bg-[#111111] text-white p-3 font-mono text-xs overflow-x-auto relative group shadow-sm">
-              <div className="flex items-center justify-between text-[10px] text-neutral-400 pb-1 mb-1.5 border-b border-white/10">
-                <span className="uppercase tracking-wider font-semibold">{lang || 'SQL Query'}</span>
+            <div key={i} className="my-2 rounded-xl bg-[#0F172A] text-slate-100 p-3.5 font-mono text-xs overflow-x-auto relative group shadow-sm border border-slate-700/60">
+              <div className="flex items-center justify-between text-[10px] text-slate-400 pb-1.5 mb-2 border-b border-slate-700/80">
+                <span className="uppercase tracking-wider font-semibold text-violet-400">{lang || 'SQL Query'}</span>
                 <button
                   type="button"
                   onClick={() => {
                     navigator.clipboard?.writeText(code);
                     showToast('Snippet copied to clipboard');
                   }}
-                  className="hover:text-white flex items-center gap-1 transition-colors"
+                  className="hover:text-white flex items-center gap-1 transition-colors text-slate-300"
                 >
                   <span className="material-symbols-outlined text-[13px]">content_copy</span>
                   <span>Copy</span>
                 </button>
               </div>
-              <pre className="whitespace-pre-wrap leading-relaxed">{code}</pre>
+              <pre className="whitespace-pre-wrap leading-relaxed text-slate-200">{code}</pre>
             </div>
           );
         }
-        return <p key={i} className="whitespace-pre-line leading-relaxed font-body-md text-[#1a1c1b]">{part}</p>;
+        return <p key={i} className="whitespace-pre-line leading-relaxed font-body-md text-[#0F172A]">{part}</p>;
       });
     }
-    return <p className="whitespace-pre-line leading-relaxed font-body-md text-[#1a1c1b]">{text}</p>;
+    return <p className="whitespace-pre-line leading-relaxed font-body-md text-[#0F172A]">{text}</p>;
   };
 
   return (
-    <div className="flex w-full h-full overflow-hidden rounded-2xl bg-white border border-[#e2e3e1] shadow-xs relative select-auto">
+    <div className="flex w-full h-full overflow-hidden rounded-2xl bg-white border border-[#E2E8F0] shadow-sm relative select-auto">
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="fixed top-20 right-4 sm:right-8 z-50 bg-[#1a1c1b] text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2.5 font-label-md text-label-md animate-in fade-in slide-in-from-top-2 border border-white/10">
-          <span className="material-symbols-outlined text-[17px] text-emerald-400">check_circle</span>
+        <div className="fixed top-20 right-4 sm:right-8 z-50 bg-[#0F172A] text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2.5 font-label-md text-label-md animate-in fade-in slide-in-from-top-2 border border-slate-700/60">
+          <span className="material-symbols-outlined text-[17px] text-[#22C55E]">check_circle</span>
           <span>{toastMessage}</span>
         </div>
       )}
 
       {/* Delete Confirmation Modal */}
       {threadToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
           <div 
-            className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-[#e2e3e1] animate-in zoom-in-95 duration-150"
+            className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-[#CBD5E1] animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3.5 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+              <div className="w-10 h-10 rounded-xl bg-[#FEE2E2] text-[#DC2626] flex items-center justify-center shrink-0 border border-[#FECACA]">
                 <span className="material-symbols-outlined text-[22px]">delete_forever</span>
               </div>
               <div className="flex flex-col">
-                <h3 className="font-headline-sm text-[#1a1c1b] font-semibold">Delete Conversation?</h3>
-                <p className="text-body-sm text-[#747878] mt-1 leading-relaxed">
-                  Are you sure you want to permanently delete <strong className="text-[#1a1c1b]">"{threadToDelete.title}"</strong>? This will remove all prompt history, retrieved vectors, and charts in this session.
+                <h3 className="font-headline-sm text-[#0F172A] font-semibold">Delete Conversation?</h3>
+                <p className="text-body-sm text-[#475569] mt-1 leading-relaxed">
+                  Are you sure you want to permanently delete <strong className="text-[#0F172A]">"{threadToDelete.title}"</strong>? This will remove all prompt history, retrieved vectors, and charts in this session.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#eeeeec]">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E2E8F0]">
               <button
                 type="button"
                 onClick={() => setThreadToDelete(null)}
-                className="px-4 py-2 rounded-xl text-body-sm font-medium text-[#444748] hover:bg-[#f4f4f2] transition-colors"
+                className="px-4 py-2 rounded-xl text-body-sm font-medium text-[#475569] hover:bg-[#F1F5F9] transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleDeleteThreadConfirmed}
-                className="px-4 py-2 rounded-xl text-body-sm font-medium bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl text-body-sm font-medium bg-[#DC2626] hover:bg-[#B91C1C] text-white shadow-xs transition-colors flex items-center gap-1.5"
               >
                 <span className="material-symbols-outlined text-[16px]">delete</span>
                 <span>Delete Chat</span>
@@ -645,16 +645,16 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
 
       {/* Rename Conversation Modal */}
       {threadToRename && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
           <div 
-            className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-[#e2e3e1] animate-in zoom-in-95 duration-150"
+            className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-[#CBD5E1] animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
-              <span className="material-symbols-outlined text-[20px] text-[#1a1c1b]">edit</span>
-              <h3 className="font-headline-sm text-[#1a1c1b] font-semibold">Rename Conversation</h3>
+              <span className="material-symbols-outlined text-[20px] text-[#2563EB]">edit</span>
+              <h3 className="font-headline-sm text-[#0F172A] font-semibold">Rename Conversation</h3>
             </div>
-            <p className="text-body-sm text-[#747878] mb-3">
+            <p className="text-body-sm text-[#475569] mb-3">
               Enter a concise descriptive title for this session thread.
             </p>
             <input
@@ -665,21 +665,21 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                 if (e.key === 'Enter') handleRenameThreadConfirmed();
                 if (e.key === 'Escape') setThreadToRename(null);
               }}
-              className="w-full h-10 px-3 rounded-xl bg-[#f4f4f2] border border-[#dadad8] text-[#1a1c1b] font-body-md focus:outline-none focus:border-[#1a1c1b] mb-4"
+              className="w-full h-10 px-3 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] font-body-md focus:outline-none focus:border-[#2563EB] mb-4"
               autoFocus
             />
             <div className="flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 onClick={() => setThreadToRename(null)}
-                className="px-4 py-2 rounded-xl text-body-sm font-medium text-[#444748] hover:bg-[#f4f4f2] transition-colors"
+                className="px-4 py-2 rounded-xl text-body-sm font-medium text-[#475569] hover:bg-[#F1F5F9] transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleRenameThreadConfirmed}
-                className="px-4 py-2 rounded-xl text-body-sm font-medium bg-[#111111] hover:bg-black text-white shadow-sm transition-colors"
+                className="px-4 py-2 rounded-xl text-body-sm font-medium bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-xs transition-colors"
               >
                 Save
               </button>
@@ -703,7 +703,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
         className={`
           ${sidebarCollapsed ? 'lg:w-0 lg:border-r-0 lg:p-0 lg:opacity-0' : 'lg:w-[270px] xl:w-[290px] lg:border-r lg:p-3 lg:opacity-100'}
           ${mobileDrawerOpen ? 'translate-x-0 w-[280px] p-3 border-r shadow-2xl' : '-translate-x-full lg:translate-x-0'}
-          fixed lg:static inset-y-0 left-0 z-50 lg:z-auto bg-[#f9f9f7] border-[#e2e3e1] flex flex-col justify-between transition-all duration-300 ease-in-out shrink-0 overflow-hidden h-full
+          fixed lg:static inset-y-0 left-0 z-50 lg:z-auto bg-[#F8FAFC] border-[#E2E8F0] flex flex-col justify-between transition-all duration-300 ease-in-out shrink-0 overflow-hidden h-full
         `}
       >
         <div className="flex flex-col h-full min-w-[245px] overflow-hidden">
@@ -712,7 +712,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
             <button
               type="button"
               onClick={handleCreateNewChat}
-              className="flex-1 h-9 px-3 rounded-xl bg-[#111111] hover:bg-black text-white font-label-md text-label-md font-medium flex items-center justify-center gap-2 transition-all shadow-xs"
+              className="flex-1 h-9 px-3 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-label-md text-label-md font-medium flex items-center justify-center gap-2 transition-all shadow-xs"
             >
               <span className="material-symbols-outlined text-[18px]">add</span>
               <span>New Chat</span>
@@ -725,7 +725,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                 setSidebarCollapsed(true);
               }}
               title="Collapse history sidebar"
-              className="w-9 h-9 rounded-xl bg-white hover:bg-[#eeeeec] border border-[#e2e3e1] text-[#747878] hover:text-[#1a1c1b] flex items-center justify-center transition-colors shrink-0"
+              className="w-9 h-9 rounded-xl bg-white hover:bg-[#F1F5F9] border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A] flex items-center justify-center transition-colors shrink-0 shadow-2xs"
               aria-label="Collapse history sidebar"
             >
               <span className="material-symbols-outlined text-[18px]">left_panel_close</span>
@@ -734,7 +734,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
 
           {/* Quick Search Input */}
           <div className="relative mb-2.5 shrink-0">
-            <span className="material-symbols-outlined absolute left-2.5 top-2 text-[#747878] text-[16px] pointer-events-none">
+            <span className="material-symbols-outlined absolute left-2.5 top-2 text-[#64748B] text-[16px] pointer-events-none">
               search
             </span>
             <input
@@ -742,12 +742,12 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
               value={searchThreads}
               onChange={(e) => setSearchThreads(e.target.value)}
               placeholder="Search chat history..."
-              className="w-full h-8 pl-8 pr-7 rounded-xl bg-white border border-[#e2e3e1] text-xs text-[#1a1c1b] placeholder:text-[#747878] focus:outline-none focus:border-[#111111] transition-colors"
+              className="w-full h-8 pl-8 pr-7 rounded-xl bg-white border border-[#E2E8F0] text-xs text-[#0F172A] placeholder:text-[#64748B] focus:outline-none focus:border-[#7C3AED] transition-colors"
             />
             {searchThreads && (
               <button
                 onClick={() => setSearchThreads('')}
-                className="absolute right-2 top-1.5 text-[#747878] hover:text-[#1a1c1b]"
+                className="absolute right-2 top-1.5 text-[#64748B] hover:text-[#0F172A]"
               >
                 <span className="material-symbols-outlined text-[14px]">close</span>
               </button>
@@ -757,7 +757,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
           {/* Controlled Scrollable Thread List */}
           <div className="flex-1 overflow-y-auto space-y-3 pr-0.5 select-none scroll-touch min-h-0">
             {filteredThreads.length === 0 ? (
-              <div className="py-8 text-center text-xs text-[#747878]">
+              <div className="py-8 text-center text-xs text-[#64748B]">
                 No conversations found
               </div>
             ) : (
@@ -767,7 +767,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
 
                 return (
                   <div key={group} className="space-y-1">
-                    <div className="px-2 text-[10px] uppercase font-semibold text-[#747878] tracking-wider mb-1">
+                    <div className="px-2 text-[10px] uppercase font-semibold text-[#64748B] tracking-wider mb-1">
                       {group}
                     </div>
 
@@ -780,22 +780,22 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                           key={thread.id}
                           className={`group relative flex items-center justify-between rounded-xl px-2.5 py-2 transition-all cursor-pointer ${
                             isActive
-                              ? 'bg-white border border-[#dadad8] shadow-xs text-[#1a1c1b]'
-                              : 'hover:bg-white/75 text-[#444748] border border-transparent'
+                              ? 'bg-white border border-[#CBD5E1] shadow-xs text-[#0F172A]'
+                              : 'hover:bg-white text-[#475569] border border-transparent'
                           }`}
                           onClick={() => handleSelectThread(thread.id)}
                         >
                           {/* Active Indicator Bar */}
                           {isActive && (
-                            <div className="absolute left-0 top-2 bottom-2 w-1 bg-[#111111] rounded-r" />
+                            <div className="absolute left-0 top-2 bottom-2 w-1 bg-[#7C3AED] rounded-r" />
                           )}
 
                           {/* Thread Title & Subtitle */}
                           <div className="flex flex-col min-w-0 pr-1 pl-1 flex-1">
-                            <span className={`text-xs truncate ${isActive ? 'font-semibold text-[#1a1c1b]' : 'font-medium group-hover:text-[#1a1c1b]'}`}>
+                            <span className={`text-xs truncate ${isActive ? 'font-semibold text-[#0F172A]' : 'font-medium group-hover:text-[#0F172A]'}`}>
                               {thread.title}
                             </span>
-                            <span className="text-[11px] text-[#747878] truncate mt-0.5">
+                            <span className="text-[11px] text-[#64748B] truncate mt-0.5">
                               {thread.subtitle || 'Empty session'}
                             </span>
                           </div>
@@ -813,8 +813,8 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                               }}
                               title="Chat options"
                               aria-label="Chat options"
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-opacity hover:bg-[#e8e8e6] text-[#747878] hover:text-[#1a1c1b] ${
-                                isMenuOpen ? 'opacity-100 bg-[#e8e8e6] text-[#1a1c1b]' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-opacity hover:bg-[#F1F5F9] text-[#64748B] hover:text-[#0F172A] ${
+                                isMenuOpen ? 'opacity-100 bg-[#F1F5F9] text-[#0F172A]' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
                               }`}
                             >
                               <span className="material-symbols-outlined text-[17px]">more_vert</span>
@@ -823,7 +823,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                             {/* Three-dot Dropdown Menu */}
                             {isMenuOpen && (
                               <div
-                                className="absolute right-0 top-8 w-44 rounded-xl bg-white border border-[#e2e3e1] shadow-xl py-1 z-30 animate-in fade-in zoom-in-95 text-left"
+                                className="absolute right-0 top-8 w-44 rounded-xl bg-white border border-[#E2E8F0] shadow-xl py-1 z-30 animate-in fade-in zoom-in-95 text-left"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {/* Rename Action */}
@@ -834,9 +834,9 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                                     setThreadToRename(thread);
                                     setRenameTitleInput(thread.title);
                                   }}
-                                  className="w-full px-3 py-1.5 text-xs text-[#1a1c1b] hover:bg-[#f4f4f2] flex items-center gap-2 transition-colors"
+                                  className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
                                 >
-                                  <span className="material-symbols-outlined text-[16px] text-[#747878]">edit</span>
+                                  <span className="material-symbols-outlined text-[16px] text-[#64748B]">edit</span>
                                   <span>Rename</span>
                                 </button>
 
@@ -847,13 +847,13 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                                     setActiveMenuThreadId(null);
                                     handleExportMarkdown(thread);
                                   }}
-                                  className="w-full px-3 py-1.5 text-xs text-[#1a1c1b] hover:bg-[#f4f4f2] flex items-center gap-2 transition-colors"
+                                  className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
                                 >
-                                  <span className="material-symbols-outlined text-[16px] text-[#747878]">download</span>
+                                  <span className="material-symbols-outlined text-[16px] text-[#64748B]">download</span>
                                   <span>Export MD</span>
                                 </button>
 
-                                <div className="my-1 border-t border-[#eeeeec]" />
+                                <div className="my-1 border-t border-[#E2E8F0]" />
 
                                 {/* Delete Chat Action */}
                                 <button
@@ -862,9 +862,9 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                                     setActiveMenuThreadId(null);
                                     setThreadToDelete(thread);
                                   }}
-                                  className="w-full px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors font-medium"
+                                  className="w-full px-3 py-1.5 text-xs text-[#DC2626] hover:bg-[#FEF2F2] flex items-center gap-2 transition-colors font-medium"
                                 >
-                                  <span className="material-symbols-outlined text-[16px] text-rose-600">delete</span>
+                                  <span className="material-symbols-outlined text-[16px] text-[#DC2626]">delete</span>
                                   <span>Delete Chat</span>
                                 </button>
                               </div>
@@ -880,12 +880,12 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
           </div>
 
           {/* Sidebar Footer: HANA Memory Health Summary */}
-          <div className="pt-2.5 mt-2 border-t border-[#e2e3e1] flex items-center justify-between text-[11px] text-[#747878] shrink-0">
+          <div className="pt-2.5 mt-2 border-t border-[#E2E8F0] flex items-center justify-between text-[11px] text-[#64748B] shrink-0">
             <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-              <span className="font-mono">3,248 Docs</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]"></span>
+              <span className="font-mono text-[#0F172A]">3,248 Docs</span>
             </div>
-            <span className="font-mono text-[10px]">HANA Vector 4.2</span>
+            <span className="font-mono text-[10px] text-[#64748B]">HANA Vector 4.2</span>
           </div>
         </div>
       </aside>
@@ -897,7 +897,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
         {/* ============================================================ */}
         {/* CHAT HEADER: Persistent, Stable Top Control Bar */}
         {/* ============================================================ */}
-        <header className="h-[54px] sm:h-[58px] border-b border-[#e2e3e1] px-3 sm:px-4 flex items-center justify-between bg-white shrink-0 z-10 gap-2 sm:gap-3 w-full">
+        <header className="h-[54px] sm:h-[58px] border-b border-[#E2E8F0] px-3 sm:px-4 flex items-center justify-between bg-white shrink-0 z-10 gap-2 sm:gap-3 w-full">
           {/* Left: Sidebar Toggle Button + Auto-truncating Active Session Title with Dots */}
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 overflow-hidden mr-2">
             {/* Sidebar Toggle Button */}
@@ -910,7 +910,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                 }
               }}
               title={sidebarCollapsed ? "Open chat history" : "Collapse chat history"}
-              className="w-8.5 h-8.5 rounded-full flex items-center justify-center text-[#444748] hover:text-[#1a1c1b] hover:bg-[#f4f4f2] transition-colors border border-[#e2e3e1] bg-white shrink-0 shadow-2xs"
+              className="w-8.5 h-8.5 rounded-full flex items-center justify-center text-[#475569] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors border border-[#E2E8F0] bg-white shrink-0 shadow-2xs"
               aria-label="Toggle chat history sidebar"
             >
               <span className="material-symbols-outlined text-[19px]">
@@ -918,12 +918,12 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
               </span>
             </button>
 
-            {/* Active Thread Title & Metadata (Strictly truncates with ellipsis '...' when sidebar toggle is open) */}
+            {/* Active Thread Title & Metadata */}
             <div className="min-w-0 flex-1 overflow-hidden">
               <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
                 <h2 
                   title={activeThread?.title || 'Conversational Analytics'}
-                  className={`font-headline-sm text-xs sm:text-sm text-[#1a1c1b] font-semibold truncate block leading-tight min-w-0 ${
+                  className={`font-headline-sm text-xs sm:text-sm text-[#0F172A] font-semibold truncate block leading-tight min-w-0 ${
                     !sidebarCollapsed 
                       ? 'max-w-[110px] xs:max-w-[150px] sm:max-w-[200px] md:max-w-[240px] lg:max-w-[280px]' 
                       : 'max-w-xs sm:max-w-md'
@@ -932,13 +932,13 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                   {activeThread?.title || 'Conversational Analytics'}
                 </h2>
                 {sidebarCollapsed && (
-                  <span className="hidden xl:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-medium border border-emerald-200 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                  <span className="hidden xl:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#DCFCE7] text-[#166534] text-[10px] font-medium border border-[#BBF7D0] shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] animate-pulse"></span>
                     <span>HANA Vector Synced</span>
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-[#747878] truncate leading-tight mt-0.5 min-w-0">
+              <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-[#64748B] truncate leading-tight mt-0.5 min-w-0">
                 <span>us10-prod</span>
                 <span aria-hidden="true">·</span>
                 <span>{messages.length} msgs</span>
@@ -948,16 +948,16 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
             </div>
           </div>
 
-          {/* Right: Header Action Controls - Stable, clearly spaced, consistent styling, never merged */}
+          {/* Right: Header Action Controls */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
             {/* Export MD */}
             {activeThread && (
               <button
                 onClick={() => handleExportMarkdown(activeThread)}
                 title="Export thread as Markdown transcript"
-                className="h-8.5 px-3 rounded-full bg-surface-container-lowest hover:bg-surface-container text-on-surface border border-[#e2e3e1] text-xs font-medium inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 whitespace-nowrap"
+                className="h-8.5 px-3 rounded-full bg-white hover:bg-[#F8FAFC] text-[#0F172A] border border-[#CBD5E1] text-xs font-medium inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 whitespace-nowrap"
               >
-                <span className="material-symbols-outlined text-[15px] text-[#747878]">download</span>
+                <span className="material-symbols-outlined text-[15px] text-[#64748B]">download</span>
                 <span>Export</span>
               </button>
             )}
@@ -973,9 +973,9 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                 }
               }}
               title="Clear all messages in active session"
-              className="h-8.5 px-3 rounded-full bg-surface-container-lowest hover:bg-surface-container text-on-surface border border-[#e2e3e1] text-xs font-medium inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 whitespace-nowrap"
+              className="h-8.5 px-3 rounded-full bg-white hover:bg-[#F8FAFC] text-[#0F172A] border border-[#CBD5E1] text-xs font-medium inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 whitespace-nowrap"
             >
-              <span className="material-symbols-outlined text-[15px] text-[#747878]">restart_alt</span>
+              <span className="material-symbols-outlined text-[15px] text-[#64748B]">restart_alt</span>
               <span>Clear</span>
             </button>
 
@@ -983,9 +983,9 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
             <button
               onClick={() => onNavigate('build-your-kpi-graph-studio')}
               title="Open Graph Studio for custom KPI charts"
-              className="h-8.5 px-3 rounded-full bg-surface-container-lowest hover:bg-surface-container text-on-surface border border-[#e2e3e1] text-xs font-medium inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 whitespace-nowrap"
+              className="h-8.5 px-3 rounded-full bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] border border-[#BFDBFE] text-xs font-medium inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 whitespace-nowrap"
             >
-              <span className="material-symbols-outlined text-[15px] text-[#747878]">insert_chart</span>
+              <span className="material-symbols-outlined text-[15px] text-[#2563EB]">insert_chart</span>
               <span>Graph Studio</span>
             </button>
           </div>
@@ -994,19 +994,19 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
         {/* ============================================================ */}
         {/* CHAT CONVERSATION AREA: The Primary Scrollable Region */}
         {/* ============================================================ */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-6 scroll-touch min-h-0">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-6 scroll-touch min-h-0 bg-[#F8FAFC]/50">
           {messages.length === 0 ? (
             /* ============================================================ */
             /* Empty State: Clean Welcome & Suggested Prompt Starters */
             /* ============================================================ */
             <div className="h-full flex flex-col items-center justify-center max-w-xl mx-auto text-center px-4 py-6">
-              <div className="w-13 h-13 rounded-2xl bg-[#f4f4f2] border border-[#e2e3e1] flex items-center justify-center text-[#1a1c1b] mb-3.5 shadow-sm">
+              <div className="w-13 h-13 rounded-2xl bg-[#F5F3FF] border border-[#DDD6FE] flex items-center justify-center text-[#7C3AED] mb-3.5 shadow-sm">
                 <span className="material-symbols-outlined text-[26px]">smart_toy</span>
               </div>
-              <h3 className="font-headline-md text-lg sm:text-[20px] text-[#1a1c1b] font-semibold">
+              <h3 className="font-headline-md text-lg sm:text-[20px] text-[#0F172A] font-semibold">
                 How can I assist your enterprise analytics?
               </h3>
-              <p className="text-body-sm text-[#747878] mt-1.5 mb-5 max-w-md leading-relaxed">
+              <p className="text-body-sm text-[#475569] mt-1.5 mb-5 max-w-md leading-relaxed">
                 Ask questions about sales ledgers, gross margins, SKU variances, regional distributions, or request custom visualization graphs.
               </p>
 
@@ -1015,21 +1015,25 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                 {[
                   {
                     icon: 'bar_chart',
+                    color: 'text-[#2563EB]',
                     title: 'Gross Margin by Category',
                     query: 'Compare gross profit margin across top 4 product categories for 2024 and provide key risk factors.',
                   },
                   {
                     icon: 'public',
+                    color: 'text-[#0D9488]',
                     title: 'Regional Revenue Share',
                     query: 'What are the regional revenue distributions across North America, EMEA, APAC, and LATAM?',
                   },
                   {
                     icon: 'receipt_long',
+                    color: 'text-[#4F46E5]',
                     title: 'Order Fulfillment Lookup',
                     query: 'Look up Order SO-106760 complete breakdown and tax status.',
                   },
                   {
                     icon: 'trending_up',
+                    color: 'text-[#7C3AED]',
                     title: '2025 Margin Projections',
                     query: 'Provide 2025 revenue projections with continuous vector-grounded context.',
                   },
@@ -1038,15 +1042,15 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                     key={idx}
                     type="button"
                     onClick={() => handleSuggestedPrompt(card.query)}
-                    className="p-3 rounded-xl bg-[#f9f9f7] hover:bg-[#f4f4f2] border border-[#e2e3e1] text-left transition-all group flex flex-col justify-between shadow-2xs hover:border-[#dadad8]"
+                    className="p-3 rounded-xl bg-white hover:bg-[#F1F5F9] border border-[#E2E8F0] text-left transition-all group flex flex-col justify-between shadow-2xs hover:border-[#CBD5E1]"
                   >
-                    <div className="flex items-center gap-2 text-[#111111] mb-1 font-semibold text-xs">
-                      <span className="material-symbols-outlined text-[17px] text-[#747878] group-hover:text-[#111111] transition-colors">
+                    <div className="flex items-center gap-2 text-[#0F172A] mb-1 font-semibold text-xs">
+                      <span className={`material-symbols-outlined text-[17px] ${card.color} transition-colors`}>
                         {card.icon}
                       </span>
                       <span>{card.title}</span>
                     </div>
-                    <span className="text-[11px] text-[#747878] line-clamp-2 leading-relaxed">
+                    <span className="text-[11px] text-[#64748B] line-clamp-2 leading-relaxed">
                       {card.query}
                     </span>
                   </button>
@@ -1063,16 +1067,16 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                   /* User Message Bubble (Right-aligned) */
                   <div key={msg.id} className="flex justify-end items-start gap-2.5 max-w-2xl ml-auto">
                     <div className="flex flex-col items-end">
-                      <div className="flex items-center gap-2 mb-1 text-[11px] text-[#747878]">
+                      <div className="flex items-center gap-2 mb-1 text-[11px] text-[#64748B]">
                         <span>{msg.userRole || 'You'}</span>
                         <span aria-hidden="true">·</span>
                         <span>{msg.timestamp}</span>
                       </div>
-                      <div className="bg-[#111111] text-white px-4 py-2.5 rounded-2xl rounded-tr-xs shadow-sm font-body-md text-sm leading-relaxed break-words">
+                      <div className="bg-[#0F172A] text-white px-4 py-2.5 rounded-2xl rounded-tr-xs shadow-sm font-body-md text-sm leading-relaxed break-words">
                         {msg.text}
                       </div>
                     </div>
-                    <div className="w-8 h-8 rounded-full bg-[#e2e3e1] text-[#1a1c1b] flex items-center justify-center text-xs font-semibold shrink-0 mt-3.5 shadow-2xs">
+                    <div className="w-8 h-8 rounded-full bg-[#E2E8F0] text-[#0F172A] flex items-center justify-center text-xs font-semibold shrink-0 mt-3.5 shadow-2xs border border-[#CBD5E1]">
                       AD
                     </div>
                   </div>
@@ -1085,7 +1089,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
               return (
                 <div key={msg.id} className="flex items-start gap-3 max-w-4xl mr-auto">
                   {/* Assistant Avatar */}
-                  <div className="w-8 h-8 rounded-xl bg-[#111111] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
+                  <div className="w-8 h-8 rounded-xl bg-[#7C3AED] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
                     <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
                   </div>
 
@@ -1093,76 +1097,80 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                     {/* Assistant Header & Model Badge */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-[#1a1c1b]">
+                        <span className="text-xs font-semibold text-[#0F172A]">
                           NEOVATIC Assistant
                         </span>
-                        <span className="text-[11px] text-[#747878]">
-                          ({msg.agentMeta?.model || 'Llama-3.2 11B'})
+                        <span className="text-[11px] text-[#7C3AED] font-medium px-2 py-0.5 rounded-full bg-[#F5F3FF] border border-[#DDD6FE]">
+                          {msg.agentMeta?.model || 'Llama-3.2 11B'}
                         </span>
-                        <span aria-hidden="true" className="text-[#dadad8]">·</span>
-                        <span className="text-[11px] text-[#747878] font-mono">
+                        <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
+                        <span className="text-[11px] text-[#64748B] font-mono">
                           {msg.agentMeta?.latency || '0.2s'}
                         </span>
                       </div>
 
                       {/* Grounding Confidence Score */}
                       {msg.agentMeta?.cosineSim && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          <span className="material-symbols-outlined text-[13px] text-emerald-600">verified</span>
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#166534] bg-[#DCFCE7] px-2 py-0.5 rounded-full border border-[#BBF7D0]">
+                          <span className="material-symbols-outlined text-[13px] text-[#16A34A]">verified</span>
                           <span>Similarity {msg.agentMeta.cosineSim}</span>
                         </div>
                       )}
                     </div>
 
                     {/* Assistant Response Content Card */}
-                    <div className="bg-[#f9f9f7] border border-[#e2e3e1] rounded-2xl rounded-tl-xs p-4 sm:p-5 text-[#1a1c1b] text-sm leading-relaxed shadow-2xs space-y-4">
+                    <div className="bg-white border border-[#E2E8F0] rounded-2xl rounded-tl-xs p-4 sm:p-5 text-[#0F172A] text-sm leading-relaxed shadow-xs space-y-4">
                       {/* Render text with code block parsing */}
                       {msg.text && renderFormattedText(msg.text)}
 
                       {/* Inline Analytical Chart Visualization (if present) */}
                       {msg.chartData && (
-                        <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-[#e2e3e1] shadow-2xs space-y-3">
+                        <div className="bg-[#F8FAFC] rounded-xl p-3.5 sm:p-4 border border-[#E2E8F0] shadow-2xs space-y-3">
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 font-label-md text-xs font-semibold text-[#1a1c1b]">
-                              <span className="material-symbols-outlined text-[16px] text-[#747878]">bar_chart</span>
+                            <div className="flex items-center gap-1.5 font-label-md text-xs font-semibold text-[#0F172A]">
+                              <span className="material-symbols-outlined text-[16px] text-[#2563EB]">bar_chart</span>
                               <span>{msg.chartData.title}</span>
                             </div>
-                            <span className="text-[11px] text-[#747878] font-mono">
+                            <span className="text-[11px] text-[#64748B] font-mono">
                               {msg.chartData.unit}
                             </span>
                           </div>
 
                           <div className="space-y-2.5 pt-1">
-                            {msg.chartData.items.map((item, idx) => (
-                              <div key={idx} className="space-y-1">
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-[#444748] font-medium truncate mr-2">
-                                    {item.label}
-                                  </span>
-                                  <span className="font-semibold text-[#1a1c1b] font-mono shrink-0">
-                                    {item.displayValue}
-                                  </span>
+                            {msg.chartData.items.map((item, idx) => {
+                              const barColors = ['bg-[#7C3AED]', 'bg-[#2563EB]', 'bg-[#0D9488]', 'bg-[#4F46E5]'];
+                              const chosenColor = barColors[idx % barColors.length];
+                              return (
+                                <div key={idx} className="space-y-1">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-[#334155] font-medium truncate mr-2">
+                                      {item.label}
+                                    </span>
+                                    <span className="font-semibold text-[#0F172A] font-mono shrink-0">
+                                      {item.displayValue}
+                                    </span>
+                                  </div>
+                                  <div className="w-full h-2 rounded-full bg-[#E2E8F0] overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${chosenColor} transition-all duration-500`}
+                                      style={{ width: `${Math.min(item.value, 100)}%` }}
+                                    />
+                                  </div>
                                 </div>
-                                <div className="w-full h-2 rounded-full bg-[#f0f0ee] overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-[#111111] transition-all duration-500"
-                                    style={{ width: `${Math.min(item.value, 100)}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
 
                       {/* Risk Factors / Variances */}
                       {msg.riskFactors && msg.riskFactors.length > 0 && (
-                        <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 space-y-2">
-                          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-900">
-                            <span className="material-symbols-outlined text-[16px] text-amber-700">warning</span>
+                        <div className="bg-[#FEF3C7]/60 border border-[#FDE68A] rounded-xl p-3.5 space-y-2">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#92400E]">
+                            <span className="material-symbols-outlined text-[16px] text-[#D97706]">warning</span>
                             <span>Identified Variance Factors</span>
                           </div>
-                          <ul className="space-y-1.5 text-xs text-amber-950 pl-5 list-disc">
+                          <ul className="space-y-1.5 text-xs text-[#78350F] pl-5 list-disc">
                             {msg.riskFactors.map((rf, idx) => (
                               <li key={idx}>
                                 <strong>{rf.title}:</strong> {rf.desc}
@@ -1174,19 +1182,19 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
 
                       {/* Retrieved Documents & Grounding Accordion */}
                       {msg.retrievedDocs && msg.retrievedDocs.length > 0 && (
-                        <div className="pt-2 border-t border-[#e2e3e1]">
+                        <div className="pt-2 border-t border-[#E2E8F0]">
                           <button
                             type="button"
                             onClick={() =>
                               setExpandedDocMessageId(areDocsExpanded ? null : msg.id)
                             }
-                            className="w-full flex items-center justify-between p-2 rounded-lg bg-white hover:bg-[#f4f4f2] border border-[#e2e3e1] text-xs font-medium text-[#444748] transition-colors"
+                            className="w-full flex items-center justify-between p-2 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-xs font-medium text-[#475569] transition-colors"
                           >
                             <div className="flex items-center gap-2">
-                              <span className="material-symbols-outlined text-[16px] text-[#747878]">source</span>
+                              <span className="material-symbols-outlined text-[16px] text-[#7C3AED]">source</span>
                               <span>Retrieved Vector Sources ({msg.retrievedDocs.length} Chunks)</span>
                             </div>
-                            <span className="material-symbols-outlined text-[18px] text-[#747878]">
+                            <span className="material-symbols-outlined text-[18px] text-[#64748B]">
                               {areDocsExpanded ? 'expand_less' : 'expand_more'}
                             </span>
                           </button>
@@ -1196,20 +1204,20 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                               {msg.retrievedDocs.map((doc) => (
                                 <div
                                   key={doc.id}
-                                  className="p-3 rounded-xl bg-white border border-[#e2e3e1] space-y-1.5 text-xs"
+                                  className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1.5 text-xs"
                                 >
                                   <div className="flex items-center justify-between">
-                                    <span className="font-semibold text-[#1a1c1b] font-mono text-[11px] truncate">
+                                    <span className="font-semibold text-[#0F172A] font-mono text-[11px] truncate">
                                       {doc.source}
                                     </span>
-                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0]">
                                       Sim: {doc.relevanceScore}
                                     </span>
                                   </div>
-                                  <p className="text-[#444748] font-mono text-[11px] bg-[#f9f9f7] p-2 rounded-lg border border-[#eeeeec] leading-relaxed break-words">
+                                  <p className="text-[#334155] font-mono text-[11px] bg-white p-2 rounded-lg border border-[#E2E8F0] leading-relaxed break-words">
                                     {doc.snippet}
                                   </p>
-                                  <div className="text-[10px] text-[#747878]">
+                                  <div className="text-[10px] text-[#64748B]">
                                     Partition / Index: {doc.timestamp}
                                   </div>
                                 </div>
@@ -1221,14 +1229,14 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                     </div>
 
                     {/* Assistant Actions Bar */}
-                    <div className="flex items-center gap-1 text-xs text-[#747878]">
+                    <div className="flex items-center gap-1 text-xs text-[#64748B]">
                       <button
                         type="button"
                         onClick={() => {
                           navigator.clipboard?.writeText(msg.text || '');
                           showToast('Copied answer to clipboard');
                         }}
-                        className="px-2.5 py-1 rounded-lg hover:bg-[#f4f4f2] text-[#444748] hover:text-[#1a1c1b] flex items-center gap-1 transition-colors"
+                        className="px-2.5 py-1 rounded-lg hover:bg-[#F1F5F9] text-[#475569] hover:text-[#0F172A] flex items-center gap-1 transition-colors"
                       >
                         <span className="material-symbols-outlined text-[15px]">content_copy</span>
                         <span>Copy</span>
@@ -1237,7 +1245,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                       <button
                         type="button"
                         onClick={() => onNavigate('build-your-kpi-graph-studio')}
-                        className="px-2.5 py-1 rounded-lg hover:bg-[#f4f4f2] text-[#444748] hover:text-[#1a1c1b] flex items-center gap-1 transition-colors"
+                        className="px-2.5 py-1 rounded-lg hover:bg-[#EFF6FF] text-[#2563EB] hover:text-[#1D4ED8] flex items-center gap-1 transition-colors"
                       >
                         <span className="material-symbols-outlined text-[15px]">query_stats</span>
                         <span>Open in Studio</span>
@@ -1246,7 +1254,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                       <button
                         type="button"
                         onClick={() => showToast('Insight pinned to Executive Dashboard')}
-                        className="px-2.5 py-1 rounded-lg hover:bg-[#f4f4f2] text-[#444748] hover:text-[#1a1c1b] flex items-center gap-1 transition-colors"
+                        className="px-2.5 py-1 rounded-lg hover:bg-[#F1F5F9] text-[#475569] hover:text-[#0F172A] flex items-center gap-1 transition-colors"
                       >
                         <span className="material-symbols-outlined text-[15px]">push_pin</span>
                         <span>Pin</span>
@@ -1261,17 +1269,17 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
           {/* Submitting / Retrieving State */}
           {isSubmitting && (
             <div className="flex items-start gap-3 max-w-2xl mr-auto animate-in fade-in">
-              <div className="w-8 h-8 rounded-xl bg-[#111111] text-white flex items-center justify-center shrink-0 shadow-sm animate-pulse">
+              <div className="w-8 h-8 rounded-xl bg-[#7C3AED] text-white flex items-center justify-center shrink-0 shadow-sm animate-pulse">
                 <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
               </div>
-              <div className="bg-[#f9f9f7] border border-[#e2e3e1] rounded-2xl rounded-tl-xs p-3.5 sm:p-4 text-xs text-[#444748] space-y-2 shadow-2xs">
-                <div className="flex items-center gap-2 font-medium text-[#1a1c1b]">
-                  <span className="material-symbols-outlined text-[18px] animate-spin text-[#111111]">
+              <div className="bg-[#F5F3FF] border border-[#DDD6FE] rounded-2xl rounded-tl-xs p-3.5 sm:p-4 text-xs text-[#5B21B6] space-y-2 shadow-2xs">
+                <div className="flex items-center gap-2 font-medium text-[#5B21B6]">
+                  <span className="material-symbols-outlined text-[18px] animate-spin text-[#7C3AED]">
                     progress_activity
                   </span>
                   <span>Retrieving context from SAP HANA in-memory vector store...</span>
                 </div>
-                <div className="flex items-center gap-2 text-[#747878] pl-6 text-[11px]">
+                <div className="flex items-center gap-2 text-[#6D28D9] pl-6 text-[11px]">
                   <span>Cosine Match Score &gt; 0.90</span>
                   <span aria-hidden="true">·</span>
                   <span>Evaluating 3,248 partitions</span>
@@ -1286,8 +1294,8 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
         {/* ============================================================ */}
         {/* CHAT INPUT AREA: Sticky / Docked at Bottom of Chat Panel */}
         {/* ============================================================ */}
-        <div className="p-3 sm:p-4 bg-white border-t border-[#e2e3e1] shrink-0 z-10">
-          <div className="max-w-4xl mx-auto rounded-2xl bg-[#f9f9f7] border border-[#dadad8] focus-within:border-[#111111] focus-within:shadow-md transition-all p-2.5 sm:p-3 space-y-2">
+        <div className="p-3 sm:p-4 bg-white border-t border-[#E2E8F0] shrink-0 z-10">
+          <div className="max-w-4xl mx-auto rounded-2xl bg-[#F8FAFC] border border-[#CBD5E1] focus-within:border-[#7C3AED] focus-within:ring-2 focus-within:ring-[#7C3AED]/20 focus-within:bg-white transition-all p-2.5 sm:p-3 space-y-2">
             {/* Multiline Textarea */}
             <textarea
               ref={textareaRef}
@@ -1301,19 +1309,19 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
               }}
               placeholder="Ask about sales, gross margins, SKU variances, or request a custom chart..."
               rows={2}
-              className="w-full bg-transparent resize-none text-sm text-[#1a1c1b] placeholder:text-[#747878] focus:outline-none leading-relaxed max-h-36 overflow-y-auto"
+              className="w-full bg-transparent resize-none text-sm text-[#0F172A] placeholder:text-[#64748B] focus:outline-none leading-relaxed max-h-36 overflow-y-auto"
             />
 
             {/* Input Toolbar */}
-            <div className="flex items-center justify-between pt-1.5 border-t border-[#e8e8e6] gap-2">
-              <div className="flex items-center gap-1.5 text-[11px] text-[#747878] select-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+            <div className="flex items-center justify-between pt-1.5 border-t border-[#E2E8F0] gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B] select-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]"></span>
                 <span>SAP HANA In-Memory RAG</span>
               </div>
 
               {/* Right: Send Button & Keyboard indicator */}
               <div className="flex items-center gap-2 shrink-0">
-                <span className="hidden sm:inline text-[11px] text-[#747878] font-mono select-none">
+                <span className="hidden sm:inline text-[11px] text-[#64748B] font-mono select-none">
                   Enter ↵ to send
                 </span>
 
@@ -1322,7 +1330,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                   onClick={handleSendMessage}
                   disabled={isSubmitting || !inputText.trim()}
                   aria-label="Send message"
-                  className="w-8 h-8 rounded-xl bg-[#111111] hover:bg-black disabled:bg-[#dadad8] text-white flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                  className="w-8 h-8 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] disabled:bg-[#E2E8F0] disabled:text-[#94A3B8] text-white flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
                 >
                   <span className="material-symbols-outlined text-[17px]">arrow_upward</span>
                 </button>
@@ -1331,7 +1339,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
           </div>
 
           {/* Quiet disclaimer */}
-          <div className="text-center mt-2 text-[10px] text-[#747878]">
+          <div className="text-center mt-2 text-[10px] text-[#64748B]">
             Grounded in SAP HANA in-memory columnar vector store · AI results should be verified with official general ledgers
           </div>
         </div>
