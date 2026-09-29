@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { SAMPLE_RECORDS } from '../data/mockData';
+import { uploadDatasetFile } from '../services/uploadService';
 
 interface DatasetIngestionProps {
   onNavigate: (path: string) => void;
@@ -27,27 +28,33 @@ export const DatasetIngestion: React.FC<DatasetIngestionProps> = ({ onNavigate }
     e.preventDefault();
     setDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processSelectedFile(e.dataTransfer.files[0].name);
+      processSelectedFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      processSelectedFile(e.target.files[0].name);
+      processSelectedFile(e.target.files[0]);
     }
   };
 
-  const processSelectedFile = (name: string) => {
-    setFileName(name);
+  const processSelectedFile = async (file: File) => {
+    setFileName(file.name);
     setIsSyncing(true);
-    setSyncStatus(`Ingesting ${name}...`);
-    setTimeout(() => {
-      setIsSyncing(false);
-      setRecordCount(prev => prev + Math.floor(Math.random() * 50) + 10);
-      setSyncStatus('Dataset Ingestion Complete · Ready for Analysis');
+    setSyncStatus(`Ingesting ${file.name} to HANA Vector Engine...`);
+    try {
+      const res = await uploadDatasetFile(file);
+      setRecordCount(res.rows_processed || 3412);
+      setSyncStatus(`Dataset Ingestion Complete · ${res.message || 'Ready for Analysis'}`);
       setSyncTime('Synchronized just now');
-      showToast(`Successfully ingested and vectorized ${name}`);
-    }, 1200);
+      showToast(`Ingested ${file.name} — ${res.rows_processed ?? 'all'} rows processed`);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Upload failed';
+      setSyncStatus(`Ingestion Failed: ${detail}`);
+      showToast(`Error: ${detail}`);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const downloadSampleTemplate = () => {

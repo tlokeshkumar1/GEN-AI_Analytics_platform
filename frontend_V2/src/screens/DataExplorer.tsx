@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SQL_QUERY_RESULTS, SCHEMA_COLUMNS } from '../data/mockData';
+import { queryAnalytics, AnalyticsResponse } from '../services/analyticsService';
 
 interface DataExplorerProps {
   onNavigate: (path: string) => void;
@@ -17,6 +18,10 @@ export const DataExplorer: React.FC<DataExplorerProps> = ({ onNavigate }) => {
   const [schemaModal, setSchemaModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Live backend state
+  const [liveResults, setLiveResults] = useState<AnalyticsResponse | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 2200);
@@ -29,16 +34,24 @@ export const DataExplorer: React.FC<DataExplorerProps> = ({ onNavigate }) => {
     'Top 5 Products with highest DiscountPercent and NetRevenueUSD',
   ];
 
-  const handleRunQuery = () => {
+  const handleRunQuery = async () => {
     setIsExecuting(true);
-    setTimeout(() => {
+    setQueryError(null);
+    try {
+      const res = await queryAnalytics(queryInput);
+      setLiveResults(res);
+      showToast(`Query executed — ${res.results.length} rows returned`);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Query failed';
+      setQueryError(detail);
+      showToast(`Error: ${detail}`);
+    } finally {
       setIsExecuting(false);
-      showToast('Query executed on SAP HANA In-Memory Engine (38ms)');
-    }, 450);
+    }
   };
 
   const handleCopySQL = () => {
-    const sql = `SELECT 
+    const sql = liveResults?.generated_sql ?? `SELECT 
     T0."Category", 
     SUM(T0."NetRevenueUSD") AS "TotalNetRevenue", 
     SUM(T0."GrossMarginUSD") AS "TotalGrossMargin",
@@ -281,15 +294,19 @@ ORDER BY "TotalNetRevenue" DESC;`;
         </div>
 
         <div className="p-space-lg overflow-x-auto bg-[#090D16] font-mono text-[13px] leading-relaxed text-slate-200">
-          <pre className="m-0">
-            <span className="text-[#60A5FA] font-semibold">SELECT</span><br />
-            {'    '}T0.<span className="text-[#CBD5E1]">"Category"</span>,<br />
-            {'    '}<span className="text-[#60A5FA] font-semibold">SUM</span>(T0.<span className="text-[#CBD5E1]">"NetRevenueUSD"</span>) <span className="text-[#60A5FA] font-semibold">AS</span> <span className="text-[#CBD5E1]">"TotalNetRevenue"</span>,<br />
-            {'    '}<span className="text-[#60A5FA] font-semibold">SUM</span>(T0.<span className="text-[#CBD5E1]">"GrossMarginUSD"</span>) <span className="text-[#60A5FA] font-semibold">AS</span> <span className="text-[#CBD5E1]">"TotalGrossMargin"</span>,<br />
-            {'    '}<span className="text-[#60A5FA] font-semibold">ROUND</span>(<span className="text-[#60A5FA] font-semibold">AVG</span>(T0.<span className="text-[#CBD5E1]">"GrossMarginPercent"</span>), <span className="text-[#F59E0B]">2</span>) <span className="text-[#60A5FA] font-semibold">AS</span> <span className="text-[#CBD5E1]">"AvgMarginPct"</span><br />
-            <span className="text-[#60A5FA] font-semibold">FROM</span> <span className="text-[#CBD5E1]">"NEOVATIC_DB"</span>.<span className="text-[#CBD5E1]">"SALES_FACT"</span> T0<br />
-            <span className="text-[#60A5FA] font-semibold">GROUP BY</span> T0.<span className="text-[#CBD5E1]">"Category"</span><br />
-            <span className="text-[#60A5FA] font-semibold">ORDER BY</span> <span className="text-[#CBD5E1]">"TotalNetRevenue"</span> <span className="text-[#60A5FA] font-semibold">DESC</span>;
+          <pre className="m-0 whitespace-pre-wrap">
+            {liveResults?.generated_sql ? liveResults.generated_sql : (
+              <>
+                <span className="text-[#60A5FA] font-semibold">SELECT</span><br />
+                {'    '}T0.<span className="text-[#CBD5E1]">"Category"</span>,<br />
+                {'    '}<span className="text-[#60A5FA] font-semibold">SUM</span>(T0.<span className="text-[#CBD5E1]">"NetRevenueUSD"</span>) <span className="text-[#60A5FA] font-semibold">AS</span> <span className="text-[#CBD5E1]">"TotalNetRevenue"</span>,<br />
+                {'    '}<span className="text-[#60A5FA] font-semibold">SUM</span>(T0.<span className="text-[#CBD5E1]">"GrossMarginUSD"</span>) <span className="text-[#60A5FA] font-semibold">AS</span> <span className="text-[#CBD5E1]">"TotalGrossMargin"</span>,<br />
+                {'    '}<span className="text-[#60A5FA] font-semibold">ROUND</span>(<span className="text-[#60A5FA] font-semibold">AVG</span>(T0.<span className="text-[#CBD5E1]">"GrossMarginPercent"</span>), <span className="text-[#F59E0B]">2</span>) <span className="text-[#60A5FA] font-semibold">AS</span> <span className="text-[#CBD5E1]">"AvgMarginPct"</span><br />
+                <span className="text-[#60A5FA] font-semibold">FROM</span> <span className="text-[#CBD5E1]">"NEOVATIC_DB"</span>.<span className="text-[#CBD5E1]">"SALES_FACT"</span> T0<br />
+                <span className="text-[#60A5FA] font-semibold">GROUP BY</span> T0.<span className="text-[#CBD5E1]">"Category"</span><br />
+                <span className="text-[#60A5FA] font-semibold">ORDER BY</span> <span className="text-[#CBD5E1]">"TotalNetRevenue"</span> <span className="text-[#60A5FA] font-semibold">DESC</span>;
+              </>
+            )}
           </pre>
         </div>
       </div>
@@ -310,7 +327,13 @@ ORDER BY "TotalNetRevenue" DESC;`;
               </span>
             </div>
             <p className="font-body-md text-body-md text-[#334155] leading-snug">
-              <strong className="text-[#0F172A]">Material Handling</strong> anchors top-line volume with <strong className="text-[#0F172A]">$58.24M</strong> in Net Revenue, yet <strong className="text-[#0F172A]">Robotics & Automation</strong> delivers structural margin efficiency at <strong className="text-[#0F172A]">38.4%</strong>. Shifting mix by 3.2% into automation workloads yields an estimated +$1.8M incremental gross margin without additional CAPEX.
+              {liveResults?.insights ? (
+                <span>{liveResults.insights}</span>
+              ) : (
+                <>
+                  <strong className="text-[#0F172A]">Material Handling</strong> anchors top-line volume with <strong className="text-[#0F172A]">$58.24M</strong> in Net Revenue, yet <strong className="text-[#0F172A]">Robotics & Automation</strong> delivers structural margin efficiency at <strong className="text-[#0F172A]">38.4%</strong>. Shifting mix by 3.2% into automation workloads yields an estimated +$1.8M incremental gross margin without additional CAPEX.
+                </>
+              )}
             </p>
           </div>
         </div>

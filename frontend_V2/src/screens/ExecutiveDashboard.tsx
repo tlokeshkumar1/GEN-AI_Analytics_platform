@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TOP_PRODUCTS,
   REGIONAL_MARKET_SHARE,
@@ -7,6 +7,7 @@ import {
   QUARTERLY_TARGETS,
   ProductSKU,
 } from '../data/mockData';
+import { fetchDashboardData, DashboardData } from '../services/dashboardService';
 
 interface ExecutiveDashboardProps {
   onNavigate: (path: string) => void;
@@ -16,45 +17,103 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
   const [selectedPeriod, setSelectedPeriod] = useState<'All' | '2025' | '2024' | '2023'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
-  const [syncTime, setSyncTime] = useState('2m ago');
-  const [activeChartMonth, setActiveChartMonth] = useState<number>(9); // 0-11, default 9 (Oct)
+  const [syncTime, setSyncTime] = useState('Loading...');
+  const [activeChartMonth, setActiveChartMonth] = useState<number>(-1);
   const [fullCatalogueOpen, setFullCatalogueOpen] = useState(false);
 
-  // Period multiplier for dynamic data changes
-  const periodMultiplier = {
-    All: { rev: '$184.2M', profit: '$78.5M', margin: '42.6%', qty: '1,420,890' },
-    '2025': { rev: '$184.2M', profit: '$78.5M', margin: '42.6%', qty: '1,420,890' },
-    '2024': { rev: '$158.4M', profit: '$64.2M', margin: '40.5%', qty: '1,280,310' },
-    '2023': { rev: '$134.1M', profit: '$52.8M', margin: '39.3%', qty: '1,110,400' },
-  }[selectedPeriod];
+  // ── Live Backend Data ──────────────────────────────────────────────────────
+  const [liveData, setLiveData] = useState<DashboardData | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  // Month data for chart
-  const monthlyData = [
-    { month: 'Jan', rev: 12.2, profit: 4.8, x: 20, revY: 130, profitY: 150 },
-    { month: 'Feb', rev: 12.9, profit: 5.1, x: 80, revY: 120, profitY: 144 },
-    { month: 'Mar', rev: 13.5, profit: 5.4, x: 140, revY: 110, profitY: 140 },
-    { month: 'Apr', rev: 14.1, profit: 5.8, x: 200, revY: 95, profitY: 132 },
-    { month: 'May', rev: 14.8, profit: 6.2, x: 260, revY: 80, profitY: 124 },
-    { month: 'Jun', rev: 14.5, profit: 6.0, x: 320, revY: 88, profitY: 128 },
-    { month: 'Jul', rev: 15.6, profit: 6.6, x: 380, revY: 68, profitY: 118 },
-    { month: 'Aug', rev: 16.4, profit: 7.0, x: 440, revY: 55, profitY: 110 },
-    { month: 'Sep', rev: 16.1, profit: 6.8, x: 500, revY: 60, profitY: 114 },
-    { month: 'Oct', rev: 17.8, profit: 7.6, x: 560, revY: 40, profitY: 102 },
-    { month: 'Nov', rev: 18.5, profit: 8.0, x: 620, revY: 30, profitY: 95 },
-    { month: 'Dec', rev: 19.2, profit: 8.4, x: 660, revY: 24, profitY: 90 },
-  ];
-
-  const currentHoverPoint = monthlyData[activeChartMonth];
-
-  const handleSync = () => {
+  const loadDashboardData = async () => {
     setSyncing(true);
-    setTimeout(() => {
-      setSyncing(false);
+    try {
+      const data = await fetchDashboardData();
+      setLiveData(data);
       setSyncTime('Just now');
-    }, 800);
+      // Set active chart month to last available month
+      if (data.revenue_trend.length > 0 && activeChartMonth < 0) {
+        setActiveChartMonth(data.revenue_trend.length - 1);
+      }
+    } catch (err) {
+      console.error('Dashboard fetch failed, using mock data:', err);
+      setSyncTime('Offline – using cached data');
+    } finally {
+      setSyncing(false);
+      setDataLoading(false);
+    }
   };
 
-  const filteredProducts = TOP_PRODUCTS.filter(p =>
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const handleSync = () => loadDashboardData();
+
+  // ── Derived data from live backend or mock fallback ─────────────────────
+  const kpis = liveData?.kpis ?? [
+    { title: 'Total Net Revenue', value: '$184.2M', change: '+14.8%', trend: 'up' as const },
+    { title: 'Total Quantity Sold', value: '1,420,890', change: '+8.2%', trend: 'up' as const },
+    { title: 'Gross Margin', value: '42.6%', change: '+2.4%', trend: 'up' as const },
+    { title: 'Active Countries', value: '15', change: '0.0%', trend: 'neutral' as const },
+  ];
+
+  const periodMultiplier = {
+    rev: kpis[0]?.value ?? '$0',
+    profit: liveData ? `$${(liveData.revenue_trend.reduce((s, m) => s + m.profit, 0) / 1e6).toFixed(1)}M` : '$78.5M',
+    margin: kpis[2]?.value ?? '0%',
+    qty: kpis[1]?.value ?? '0',
+  };
+
+  // Revenue trend chart data
+  const rawTrend = liveData?.revenue_trend ?? [];
+  const maxRev = Math.max(...rawTrend.map(m => m.revenue), 1);
+  const chartWidth = 680;
+  const chartHeight = 170;
+  const topPad = 20;
+  const monthlyData = rawTrend.length > 0
+    ? rawTrend.map((m, i) => {
+        const x = rawTrend.length > 1 ? topPad + (i / (rawTrend.length - 1)) * (chartWidth - 2 * topPad) : chartWidth / 2;
+        const revY = topPad + (1 - m.revenue / maxRev) * (chartHeight - topPad);
+        const profitY = topPad + (1 - m.profit / maxRev) * (chartHeight - topPad);
+        return { month: m.month.replace(/^\d{4}-?/, ''), rev: m.revenue / 1e6, profit: m.profit / 1e6, x, revY, profitY };
+      })
+    : [
+        { month: 'Jan', rev: 12.2, profit: 4.8, x: 20, revY: 130, profitY: 150 },
+        { month: 'Feb', rev: 12.9, profit: 5.1, x: 80, revY: 120, profitY: 144 },
+        { month: 'Mar', rev: 13.5, profit: 5.4, x: 140, revY: 110, profitY: 140 },
+        { month: 'Apr', rev: 14.1, profit: 5.8, x: 200, revY: 95, profitY: 132 },
+        { month: 'May', rev: 14.8, profit: 6.2, x: 260, revY: 80, profitY: 124 },
+        { month: 'Jun', rev: 14.5, profit: 6.0, x: 320, revY: 88, profitY: 128 },
+        { month: 'Jul', rev: 15.6, profit: 6.6, x: 380, revY: 68, profitY: 118 },
+        { month: 'Aug', rev: 16.4, profit: 7.0, x: 440, revY: 55, profitY: 110 },
+        { month: 'Sep', rev: 16.1, profit: 6.8, x: 500, revY: 60, profitY: 114 },
+        { month: 'Oct', rev: 17.8, profit: 7.6, x: 560, revY: 40, profitY: 102 },
+        { month: 'Nov', rev: 18.5, profit: 8.0, x: 620, revY: 30, profitY: 95 },
+        { month: 'Dec', rev: 19.2, profit: 8.4, x: 660, revY: 24, profitY: 90 },
+      ];
+
+  const safeChartIdx = activeChartMonth >= 0 && activeChartMonth < monthlyData.length ? activeChartMonth : Math.max(monthlyData.length - 1, 0);
+  const currentHoverPoint = monthlyData[safeChartIdx] ?? monthlyData[0];
+
+  // ── Live products from backend, fallback to mock ────────────────────────
+  const liveProducts: ProductSKU[] = liveData?.top_products
+    ? liveData.top_products.map((p, idx) => ({
+        id: `live-prod-${idx}`,
+        name: p.product,
+        category: '',
+        unitsSold: p.units,
+        netRevenue: p.revenue,
+        netRevenueFormatted: p.revenue >= 1e6 ? `$${(p.revenue / 1e6).toFixed(1)}M` : `$${p.revenue.toLocaleString()}`,
+        volumeWeight: Math.min(100, Math.round((p.revenue / Math.max(...(liveData?.top_products?.map(tp => tp.revenue) ?? [1]))) * 100)),
+        marginStatus: 0,
+        statusColor: ['bg-[#7C3AED]', 'bg-[#2563EB]', 'bg-[#6366F1]', 'bg-[#0F766E]', 'bg-[#0891B2]', 'bg-[#4F46E5]', 'bg-[#3B82F6]'][idx % 7],
+        skuCode: `SKU-${idx + 1}`,
+        region: '',
+      }))
+    : TOP_PRODUCTS;
+
+  const filteredProducts = liveProducts.filter(p =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.skuCode.toLowerCase().includes(searchQuery.toLowerCase())
@@ -144,10 +203,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
           <div className="flex items-start justify-between">
             <div className="flex flex-col">
               <span className="font-label-md text-label-md uppercase tracking-wider text-[#64748B] font-medium">
-                Total Net Revenue
+                {kpis[0]?.title ?? 'Total Net Revenue'}
               </span>
               <span className="font-headline-lg text-headline-lg text-[#0F172A] font-semibold mt-1">
-                {periodMultiplier.rev}
+                {kpis[0]?.value ?? periodMultiplier.rev}
               </span>
             </div>
             <div className="p-2.5 rounded-xl bg-[#EFF6FF] text-[#2563EB]">
@@ -155,10 +214,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
             </div>
           </div>
           <div className="flex items-center justify-between mt-space-md pt-space-xs">
-            <div className="flex items-center gap-1 text-[#16A34A]">
-              <span className="material-symbols-outlined text-[16px]">trending_up</span>
+            <div className={`flex items-center gap-1 ${kpis[0]?.trend === 'down' ? 'text-[#DC2626]' : 'text-[#16A34A]'}`}>
+              <span className="material-symbols-outlined text-[16px]">{kpis[0]?.trend === 'down' ? 'trending_down' : 'trending_up'}</span>
               <span className="font-label-sm text-label-sm font-semibold">
-                +14.8% YoY
+                {kpis[0]?.change ?? '+14.8%'} YoY
               </span>
             </div>
             {/* Sparkline SVG */}
@@ -179,10 +238,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
           <div className="flex items-start justify-between">
             <div className="flex flex-col">
               <span className="font-label-md text-label-md uppercase tracking-wider text-[#64748B] font-medium">
-                Total Quantity Sold
+                {kpis[1]?.title ?? 'Total Quantity Sold'}
               </span>
               <span className="font-headline-lg text-headline-lg text-[#0F172A] font-semibold mt-1">
-                {periodMultiplier.qty}
+                {kpis[1]?.value ?? periodMultiplier.qty}
               </span>
             </div>
             <div className="p-2.5 rounded-xl bg-[#CCFBF1] text-[#0F766E]">
@@ -191,9 +250,9 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
           </div>
           <div className="flex items-center justify-between mt-space-md pt-space-xs">
             <div className="flex items-center gap-1 text-[#0F766E]">
-              <span className="material-symbols-outlined text-[16px]">check</span>
+              <span className="material-symbols-outlined text-[16px]">{kpis[1]?.trend === 'down' ? 'trending_down' : 'check'}</span>
               <span className="font-label-sm text-label-sm font-semibold">
-                +8.2% vs Plan
+                {kpis[1]?.change ?? '+8.2%'} vs Plan
               </span>
             </div>
             <svg className="w-20 h-6 text-[#0F766E]" fill="none" viewBox="0 0 80 24">
@@ -213,10 +272,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
           <div className="flex items-start justify-between">
             <div className="flex flex-col">
               <span className="font-label-md text-label-md uppercase tracking-wider text-[#64748B] font-medium">
-                Gross Margin
+                {kpis[2]?.title ?? 'Gross Margin'}
               </span>
               <span className="font-headline-lg text-headline-lg text-[#0F172A] font-semibold mt-1">
-                {periodMultiplier.margin}
+                {kpis[2]?.value ?? periodMultiplier.margin}
               </span>
             </div>
             <div className="p-2.5 rounded-xl bg-[#EEF2FF] text-[#4F46E5]">
@@ -225,9 +284,9 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
           </div>
           <div className="flex items-center justify-between mt-space-md pt-space-xs">
             <div className="flex items-center gap-1 text-[#4F46E5]">
-              <span className="material-symbols-outlined text-[16px]">arrow_outward</span>
+              <span className="material-symbols-outlined text-[16px]">{kpis[2]?.trend === 'down' ? 'trending_down' : 'arrow_outward'}</span>
               <span className="font-label-sm text-label-sm font-semibold">
-                +2.4 pts expansion
+                {kpis[2]?.change ?? '+2.4%'} pts expansion
               </span>
             </div>
             <svg className="w-20 h-6 text-[#4F46E5]" fill="none" viewBox="0 0 80 24">
@@ -250,7 +309,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
                 Active Countries
               </span>
               <span className="font-headline-lg text-headline-lg text-[#0F172A] font-semibold mt-1">
-                15 Markets
+                {kpis[3]?.value ?? '15'} Markets
               </span>
             </div>
             <div className="p-2.5 rounded-xl bg-[#CFFAFE] text-[#0891B2]">
@@ -357,12 +416,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
               <line stroke="#E2E8F0" strokeWidth="1" x1="0" x2="680" y1="170" y2="170" />
 
               {/* Area Fills */}
-              <polygon fill="url(#revenueGrad)" points="20,130 80,120 140,110 200,95 260,80 320,88 380,68 440,55 500,60 560,40 620,30 660,24 660,170 20,170" />
-              <polygon fill="url(#marginGrad)" points="20,150 80,144 140,140 200,132 260,124 320,128 380,118 440,110 500,114 560,102 620,95 660,90 660,170 20,170" />
+              <polygon fill="url(#revenueGrad)" points={monthlyData.map(m => `${m.x},${m.revY}`).join(' ') + ` ${monthlyData[monthlyData.length - 1]?.x ?? 660},170 ${monthlyData[0]?.x ?? 20},170`} />
+              <polygon fill="url(#marginGrad)" points={monthlyData.map(m => `${m.x},${m.profitY}`).join(' ') + ` ${monthlyData[monthlyData.length - 1]?.x ?? 660},170 ${monthlyData[0]?.x ?? 20},170`} />
 
               {/* Net Revenue Curve (Solid Royal Blue #2563EB) */}
               <path 
-                d="M 20 130 C 50 125, 60 120, 80 120 C 110 120, 120 112, 140 110 C 170 108, 180 97, 200 95 C 230 92, 240 82, 260 80 C 290 78, 300 89, 320 88 C 350 87, 360 70, 380 68 C 410 65, 420 57, 440 55 C 470 53, 480 61, 500 60 C 530 58, 540 42, 560 40 C 590 38, 600 32, 620 30 L 660 24" 
+                d={`M ${monthlyData.map(m => `${m.x} ${m.revY}`).join(' L ')}`}
                 fill="none" 
                 stroke="#2563EB" 
                 strokeLinecap="round" 
@@ -371,7 +430,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
 
               {/* Gross Profit Curve (Indigo #6366F1) */}
               <path 
-                d="M 20 150 C 50 147, 60 145, 80 144 C 110 142, 120 141, 140 140 C 170 138, 180 133, 200 132 C 230 130, 240 125, 260 124 C 290 123, 300 129, 320 128 C 350 126, 360 119, 380 118 C 410 116, 420 112, 440 110 C 470 108, 480 115, 500 114 C 530 112, 540 103, 560 102 C 590 100, 600 96, 620 95 L 660 90" 
+                d={`M ${monthlyData.map(m => `${m.x} ${m.profitY}`).join(' L ')}`}
                 fill="none" 
                 stroke="#6366F1" 
                 strokeDasharray="3 3" 
@@ -462,20 +521,27 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
 
             {/* Ranked Regional Distribution Rows */}
             <div className="flex flex-col gap-space-md">
-              {REGIONAL_MARKET_SHARE.map((reg) => (
-                <div key={reg.name} className="flex flex-col">
-                  <div className="flex items-center justify-between font-label-md text-label-md mb-1.5">
-                    <span className="font-medium text-[#0F172A]">{reg.rank} {reg.name}</span>
-                    <span className="text-[#0F172A] font-semibold">{reg.revenue} · {reg.percentage}%</span>
+              {(liveData?.region_breakdown ?? REGIONAL_MARKET_SHARE.map(r => ({ region: r.name, revenue: parseFloat(r.revenue.replace(/[$M,]/g, '')) * 1e6, share: r.percentage }))).map((reg, idx) => {
+                const regionColors = ['bg-[#2563EB]', 'bg-[#4F46E5]', 'bg-[#0F766E]', 'bg-[#0891B2]', 'bg-[#7C3AED]'];
+                const regName = 'region' in reg ? reg.region : '';
+                const regShare = 'share' in reg ? reg.share : 0;
+                const regRevenue = 'revenue' in reg ? reg.revenue : 0;
+                const revFormatted = regRevenue >= 1e6 ? `$${(regRevenue / 1e6).toFixed(1)}M` : `$${regRevenue.toLocaleString()}`;
+                return (
+                  <div key={regName} className="flex flex-col">
+                    <div className="flex items-center justify-between font-label-md text-label-md mb-1.5">
+                      <span className="font-medium text-[#0F172A]">#{idx + 1} {regName}</span>
+                      <span className="text-[#0F172A] font-semibold">{revFormatted} · {regShare.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full ${regionColors[idx % regionColors.length]} transition-all duration-500`}
+                        style={{ width: `${regShare}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full ${reg.colorClass} transition-all duration-500`}
-                      style={{ width: `${reg.percentage}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -513,20 +579,26 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
 
             {/* Horizontal Bar Rankings */}
             <div className="flex flex-col gap-3.5">
-              {TOP_REVENUE_COUNTRIES.map((c) => (
-                <div key={c.country} className="flex flex-col">
-                  <div className="flex justify-between items-center font-label-md text-label-md mb-1">
-                    <span className="text-[#0F172A] font-medium">{c.country}</span>
-                    <span className="font-semibold text-[#0F172A]">{c.revenue}</span>
+              {(liveData?.country_breakdown ?? TOP_REVENUE_COUNTRIES.map(c => ({ country: c.country, revenue: c.revenueNum * 1e6 }))).map((c, idx) => {
+                const countryColors = ['bg-[#2563EB]', 'bg-[#4F46E5]', 'bg-[#0F766E]', 'bg-[#0891B2]', 'bg-[#059669]'];
+                const maxCountryRev = Math.max(...(liveData?.country_breakdown ?? [{ revenue: 1 }]).map(cc => cc.revenue), 1);
+                const pct = (c.revenue / maxCountryRev) * 100;
+                const revFormatted = c.revenue >= 1e6 ? `$${(c.revenue / 1e6).toFixed(1)}M` : `$${c.revenue.toLocaleString()}`;
+                return (
+                  <div key={c.country} className="flex flex-col">
+                    <div className="flex justify-between items-center font-label-md text-label-md mb-1">
+                      <span className="text-[#0F172A] font-medium">{c.country}</span>
+                      <span className="font-semibold text-[#0F172A]">{revFormatted}</span>
+                    </div>
+                    <div className="w-full h-2.5 rounded-full bg-[#F1F5F9] overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full ${countryColors[idx % countryColors.length]} transition-all duration-500`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full h-2.5 rounded-full bg-[#F1F5F9] overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full ${c.colorClass} transition-all duration-500`}
-                      style={{ width: `${c.percentage}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -550,21 +622,21 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
             </p>
 
             <div className="space-y-3">
-              {PRODUCT_CATEGORIES.map((cat) => (
-                <div key={cat.category} className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between hover:bg-[#F1F5F9] transition-colors">
-                  <div className="flex flex-col min-w-0 pr-2">
-                    <span className="font-label-md text-label-md font-medium text-[#0F172A] truncate">
-                      {cat.category}
-                    </span>
-                    <span className="font-label-sm text-label-sm text-[#64748B]">
-                      {cat.description}
+              {(liveData?.category_breakdown ?? PRODUCT_CATEGORIES.map(c => ({ category: c.category, revenue: c.revenueNum * 1e6 }))).map((cat) => {
+                const revFormatted = cat.revenue >= 1e6 ? `$${(cat.revenue / 1e6).toFixed(1)}M` : `$${cat.revenue.toLocaleString()}`;
+                return (
+                  <div key={cat.category} className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between hover:bg-[#F1F5F9] transition-colors">
+                    <div className="flex flex-col min-w-0 pr-2">
+                      <span className="font-label-md text-label-md font-medium text-[#0F172A] truncate">
+                        {cat.category}
+                      </span>
+                    </div>
+                    <span className="font-body-md text-body-md font-semibold text-[#0F172A] whitespace-nowrap">
+                      {revFormatted}
                     </span>
                   </div>
-                  <span className="font-body-md text-body-md font-semibold text-[#0F172A] whitespace-nowrap">
-                    {cat.revenue}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -589,33 +661,39 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
 
             {/* Attainment Visual Grid */}
             <div className="flex flex-col gap-4">
-              {QUARTERLY_TARGETS.map((tgt) => (
-                <div key={tgt.quarter} className="flex flex-col">
-                  <div className="flex items-center justify-between font-label-md text-label-md mb-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-[#0F172A]">{tgt.quarter}</span>
-                      <span className={`font-label-sm text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        tgt.isForecast 
-                          ? 'bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]' 
-                          : 'bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0]'
-                      }`}>
-                        {tgt.attainmentLabel}
+              {(liveData?.quarterly_performance ?? QUARTERLY_TARGETS.map(q => ({ quarter: q.quarter, target: parseFloat(q.actualVsTarget.split('/')[1]?.replace(/[$ M,]/g, '')) * 1e6 || 0, actual: parseFloat(q.actualVsTarget.split('/')[0]?.replace(/[$ M,]/g, '')) * 1e6 || 0 }))).map((tgt) => {
+                const attainmentPct = tgt.target > 0 ? (tgt.actual / tgt.target) * 100 : 0;
+                const isForecast = attainmentPct < 100;
+                const actualFmt = tgt.actual >= 1e6 ? `$${(tgt.actual / 1e6).toFixed(1)}M` : `$${tgt.actual.toLocaleString()}`;
+                const targetFmt = tgt.target >= 1e6 ? `$${(tgt.target / 1e6).toFixed(1)}M` : `$${tgt.target.toLocaleString()}`;
+                return (
+                  <div key={tgt.quarter} className="flex flex-col">
+                    <div className="flex items-center justify-between font-label-md text-label-md mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-[#0F172A]">{tgt.quarter}</span>
+                        <span className={`font-label-sm text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          isForecast
+                            ? 'bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]' 
+                            : 'bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0]'
+                        }`}>
+                          {attainmentPct.toFixed(1)}%
+                        </span>
+                      </div>
+                      <span className="text-[#475569] font-body-sm text-body-sm">
+                        {actualFmt} / {targetFmt}
                       </span>
                     </div>
-                    <span className="text-[#475569] font-body-sm text-body-sm">
-                      {tgt.actualVsTarget}
-                    </span>
+                    <div className="relative w-full h-2.5 rounded-full bg-[#F1F5F9] overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full ${
+                          isForecast ? 'bg-[#F59E0B]' : 'bg-[#16A34A]'
+                        } transition-all duration-500`}
+                        style={{ width: `${Math.min(attainmentPct, 100)}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="relative w-full h-2.5 rounded-full bg-[#F1F5F9] overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full ${
-                        tgt.isForecast ? 'bg-[#F59E0B]' : 'bg-[#16A34A]'
-                      } transition-all duration-500`}
-                      style={{ width: `${Math.min(tgt.percentage, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

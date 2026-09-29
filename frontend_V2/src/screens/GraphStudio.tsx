@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SCHEMA_COLUMNS } from '../data/mockData';
+import { generateCustomGraph, GraphResponse } from '../services/graphService';
 
 interface GraphStudioProps {
   initialPrompt?: string;
@@ -25,6 +26,13 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({
   const [expandedViewOpen, setExpandedViewOpen] = useState(false);
   const [schemaFilter, setSchemaFilter] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Live backend graph result
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [backendInsights, setBackendInsights] = useState<string | null>(null);
+  const [recordsMatched, setRecordsMatched] = useState<number | null>(null);
+  const [generatedChartType, setGeneratedChartType] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // History entries
   const [queryHistory, setQueryHistory] = useState([
@@ -52,27 +60,49 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({
     }, 2400);
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     setIsGenerating(true);
-    setTimeout(() => {
-      setIsGenerating(false);
+    setErrorMessage(null);
+    try {
+      const res = await generateCustomGraph(prompt);
+      setGeneratedImage(res.image_base64);
+      setBackendInsights(res.insights ?? null);
+      setRecordsMatched(res.records_matched ?? null);
+      setGeneratedChartType(res.chart_type ?? null);
       showToast('Visualization generated from HANA column store');
       // Append to history
       setQueryHistory(prev => [
-        { query: prompt, timestamp: 'Just now', type: chartType.replace('Auto-detect chart type', 'Dual-Axis Spline') },
+        { query: prompt, timestamp: 'Just now', type: res.chart_type ?? chartType.replace('Auto-detect chart type', 'Auto') },
         ...prev.slice(0, 8),
       ]);
-    }, 600);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Graph generation failed';
+      setErrorMessage(detail);
+      showToast(`Error: ${detail}`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
-  const handlePresetClick = (presetPrompt: string, name: string) => {
+  const handlePresetClick = async (presetPrompt: string, name: string) => {
     setPrompt(presetPrompt);
     setActivePreset(name);
     setIsGenerating(true);
-    setTimeout(() => {
-      setIsGenerating(false);
+    setErrorMessage(null);
+    try {
+      const res = await generateCustomGraph(presetPrompt);
+      setGeneratedImage(res.image_base64);
+      setBackendInsights(res.insights ?? null);
+      setRecordsMatched(res.records_matched ?? null);
+      setGeneratedChartType(res.chart_type ?? null);
       showToast(`Applied preset: ${name}`);
-    }, 450);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Preset generation failed';
+      setErrorMessage(detail);
+      showToast(`Error: ${detail}`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleAppendColumn = (columnName: string) => {
@@ -465,10 +495,10 @@ print("Chart generated successfully.")
               <span>Executed in 312ms</span>
             </div>
             <span className="font-label-sm text-label-sm text-[#CBD5E1]">•</span>
-            <span className="font-label-sm text-label-sm text-[#475569]">3,420 records matched</span>
+            <span className="font-label-sm text-label-sm text-[#475569]">{recordsMatched !== null ? `${recordsMatched.toLocaleString()} records matched` : '3,420 records matched'}</span>
             <span className="font-label-sm text-label-sm text-[#CBD5E1]">•</span>
             <span className="font-label-sm text-label-sm text-[#475569]">
-              Chart Type: Dual-Axis Spline Trendline
+              Chart Type: {generatedChartType ?? 'Dual-Axis Spline Trendline'}
             </span>
           </div>
 
@@ -535,7 +565,37 @@ print("Chart generated successfully.")
           <span>Swipe horizontally to view full multi-month timeline</span>
         </div>
 
-        {/* Rendered SVG Chart Area */}
+        {/* Rendered Chart Area — Shows backend image or fallback SVG */}
+        {generatedImage ? (
+          <div className="w-full overflow-x-auto scroll-touch">
+            <div className="min-w-[760px] py-4 flex items-center justify-center">
+              <img 
+                src={generatedImage} 
+                alt="Generated visualization" 
+                className="max-w-full h-auto rounded-xl shadow-sm border border-[#E2E8F0]"
+              />
+            </div>
+            {backendInsights && (
+              <div className="mt-4 p-4 rounded-xl bg-[#F5F3FF] border border-[#DDD6FE]">
+                <div className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[#7C3AED] text-[18px] mt-0.5">insights</span>
+                  <div>
+                    <span className="font-label-md text-label-md font-semibold text-[#6D28D9]">AI Executive Insights</span>
+                    <p className="font-body-sm text-body-sm text-[#5B21B6] mt-1 whitespace-pre-line">{backendInsights}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {errorMessage && (
+              <div className="mt-4 p-4 rounded-xl bg-[#FEF2F2] border border-[#FECACA]">
+                <div className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[#DC2626] text-[18px] mt-0.5">error</span>
+                  <p className="font-body-sm text-body-sm text-[#991B1B]">{errorMessage}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="w-full overflow-x-auto scroll-touch">
           <div className="min-w-[760px] py-4">
             <svg 
@@ -652,6 +712,7 @@ print("Chart generated successfully.")
             </svg>
           </div>
         </div>
+        )}
 
         {/* AI Summary & Key Insights Panel */}
         <div className="mt-8 pt-6 border-t border-[#E2E8F0]">

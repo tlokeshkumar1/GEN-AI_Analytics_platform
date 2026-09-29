@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { NeovaticLogo } from './NeovaticLogo';
+import { fetchHealthStatus } from '../services/healthService';
 
 interface HeaderProps {
   onOpenCommandPalette: () => void;
@@ -16,12 +17,20 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<string | null>(null);
 
-  const handleGlobalSync = () => {
+  const handleGlobalSync = async () => {
     setSyncing(true);
-    setTimeout(() => {
-      setSyncing(false);
-    }, 900);
+    try {
+      const res = await fetchHealthStatus();
+      setHealthStatus(`HANA: ${res.hana_connected ? 'OK' : 'Disconnected'} · AI Core: ${res.ai_core_connected ? 'OK' : 'Disconnected'}`);
+    } catch {
+      setHealthStatus('HANA Vector: MOCK MODE');
+    } finally {
+      setTimeout(() => {
+        setSyncing(false);
+      }, 600);
+    }
   };
 
   return (
@@ -89,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <span className={`w-1.5 h-1.5 rounded-full ${syncing ? 'bg-[#2563EB] animate-ping' : 'bg-[#0F766E]'}`}></span>
             <span className="font-label-sm text-label-sm font-medium">
-              HANA Vector: {syncing ? 'SYNCING...' : 'ACTIVE'}
+              {syncing ? 'HANA Vector: SYNCING...' : (healthStatus ?? 'HANA Vector: ACTIVE')}
             </span>
           </div>
 

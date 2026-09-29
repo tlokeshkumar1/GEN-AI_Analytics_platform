@@ -61,17 +61,17 @@ export default function App() {
       {/* Main Content Area - Fluidly & Automatically Determined for Every Screen & Aspect Ratio */}
       <div className="pl-0 lg:pl-[260px] w-full flex-1 transition-all duration-300">
         <main
-          className={`w-full pt-[60px] sm:pt-[72px] bg-[#F8FAFC] ${
-            isChat
+          className={`w-full pt-[60px] sm:pt-[72px] bg-[#F8FAFC] ${isChat
               ? 'h-[100dvh] overflow-hidden pb-14 sm:pb-16 lg:pb-0 flex flex-col'
               : 'min-h-screen min-h-dvh pb-24 lg:pb-12'
-          }`}
+            }`}
         >
-          {isChat ? (
-            <div className="flex-1 w-full max-w-[1600px] mx-auto p-2 sm:p-3 lg:p-4 overflow-hidden flex flex-col">
-              <RAGChat onNavigate={handleNavigate} />
-            </div>
-          ) : (
+          {/* RAG Chat container maintained client-side to preserve active session state across page navigation */}
+          <div className={`flex-1 w-full max-w-[1600px] mx-auto p-2 sm:p-3 lg:p-4 overflow-hidden flex-col ${isChat ? 'flex' : 'hidden'}`}>
+            <RAGChat onNavigate={handleNavigate} />
+          </div>
+
+          {!isChat && (
             <div className="max-w-[1440px] mx-auto p-margin">
               {activePath === 'executive-dashboard' && (
                 <ExecutiveDashboard onNavigate={handleNavigate} />
