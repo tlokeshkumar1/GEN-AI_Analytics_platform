@@ -86,6 +86,132 @@ export const createNewEmptyThread = (): ChatThread => ({
   messages: [],
 });
 
+export interface IntentBadgeConfig {
+  label: string;
+  icon: string;
+  badgeClass: string;
+}
+
+export const getIntentBadge = (msg: ChatMessage): IntentBadgeConfig | null => {
+  if (msg.sender !== 'agent') return null;
+
+  const intentStr = (msg.intent || '').toLowerCase();
+
+  let stepIntent = '';
+  if (msg.processing) {
+    for (const step of msg.processing) {
+      const msgLower = (step.message || '').toLowerCase();
+      const stageLower = (step.stage || '').toLowerCase();
+      if (
+        msgLower.includes('intent:') ||
+        msgLower.includes('intent detected:') ||
+        msgLower.includes('intent identified:')
+      ) {
+        stepIntent = msgLower;
+        break;
+      }
+      if (stageLower.includes('intent')) {
+        stepIntent = msgLower || stageLower;
+        break;
+      }
+    }
+  }
+
+  const combined = `${intentStr} ${stepIntent} ${msg.text || ''}`.toLowerCase();
+
+  // 1. Order Lookup (Blue badge)
+  if (
+    intentStr.includes('order') ||
+    stepIntent.includes('order') ||
+    combined.includes('order so-') ||
+    combined.includes('so-106760') ||
+    combined.includes('106760') ||
+    combined.includes('fulfillment check') ||
+    combined.includes('sales order') ||
+    combined.includes('shipping carrier') ||
+    combined.includes('s/4hana sales')
+  ) {
+    return {
+      label: 'Order Lookup',
+      icon: '📦',
+      badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+    };
+  }
+
+  // 2. HANA Vector Search (Teal badge)
+  if (
+    intentStr.includes('vector') ||
+    intentStr.includes('search') ||
+    intentStr.includes('hana') ||
+    stepIntent.includes('vector') ||
+    combined.includes('3,248 sap hana vector') ||
+    combined.includes('vector embeddings') ||
+    combined.includes('vector store') ||
+    combined.includes('vector search') ||
+    (msg.retrievedDocs && msg.retrievedDocs.length > 0 && !msg.chartData && !msg.graph_image)
+  ) {
+    return {
+      label: 'HANA Vector Search',
+      icon: '🔍',
+      badgeClass: 'bg-teal-50 text-teal-700 border-teal-200',
+    };
+  }
+
+  // 3. Analytics & Graph (Indigo badge)
+  if (
+    msg.graph_image ||
+    msg.chartData ||
+    intentStr.includes('graph') ||
+    intentStr.includes('analytic') ||
+    stepIntent.includes('graph') ||
+    stepIntent.includes('analytic') ||
+    combined.includes('chart') ||
+    combined.includes('margin') ||
+    combined.includes('revenue') ||
+    combined.includes('kpi') ||
+    combined.includes('variance') ||
+    combined.includes('gross profit')
+  ) {
+    return {
+      label: 'Analytics & Graph',
+      icon: '📊',
+      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    };
+  }
+
+  // Default fallback for assistant messages:
+  return {
+    label: 'Analytics & Graph',
+    icon: '📊',
+    badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  };
+};
+
+export const formatStageTitle = (stage: string): string => {
+  switch (stage) {
+    case 'intent_classification':
+    case 'intent_detection':
+      return 'Intent Classification';
+    case 'vector_search':
+    case 'vector_retrieval':
+      return 'HANA Vector Retrieval';
+    case 'erp_lookup':
+      return 'ERP Document Flow';
+    case 'sql_execution':
+      return 'Columnar SQL Execution';
+    case 'llm_generation':
+    case 'final_response':
+      return 'NVIDIA NIM Synthesis';
+    case 'document_flow':
+      return 'Document Flow Verification';
+    default:
+      return stage
+        .split('_')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+  }
+};
+
 export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
   // Model and input state
   const [inputText, setInputText] = useState('');
@@ -106,6 +232,17 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
 
   // Expanded document source cards per message
   const [expandedDocMessageId, setExpandedDocMessageId] = useState<string | null>(null);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+
+  // Collapsible Pipeline Execution Audit Drawer state per message (collapsed by default once completed)
+  const [expandedPipelineMsgIds, setExpandedPipelineMsgIds] = useState<Record<string, boolean>>({});
+
+  const togglePipelineDrawer = (messageId: string) => {
+    setExpandedPipelineMsgIds(prev => ({
+      ...prev,
+      [messageId]: !prev[messageId],
+    }));
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -135,11 +272,18 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
           id: 'msg-1-2',
           sender: 'agent',
           timestamp: '10:42 AM',
+          intent: 'analytics_graph',
           agentMeta: {
             latency: '0.24s',
             cosineSim: '0.942',
             model: 'Llama-3.2 11B',
           },
+          processing: [
+            { stage: 'intent_classification', status: 'completed', message: 'Intent identified: Analytics & Graph (Gross Margin)' },
+            { stage: 'vector_search', status: 'completed', message: 'Queried SAP HANA vector embeddings (cosine > 0.94)' },
+            { stage: 'sql_execution', status: 'completed', message: 'Executed columnar query on SAP_HANA_SALES_FACT' },
+            { stage: 'final_response', status: 'completed', message: 'Response synthesized via NVIDIA NIM' },
+          ],
           text: 'Based on the latest HANA vector embeddings from the 2024 FYTD Ledger (SAP_HANA_SALES_FACT), Robotics Automation commands the highest gross profit margin at 48.2%, driven by firmware upgrade attach-rates. Heavy Machinery demonstrates margin compression down to 34.2% due to raw titanium surcharge volatility in Q2.',
           chartData: {
             title: 'Gross Profit Margin by Product Category (FY2024 Actuals)',
@@ -213,11 +357,18 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
           id: 'msg-2-2',
           sender: 'agent',
           timestamp: '9:15 AM',
+          intent: 'analytics_graph',
           agentMeta: {
             latency: '0.19s',
             cosineSim: '0.961',
             model: 'Llama-3.2 11B',
           },
+          processing: [
+            { stage: 'intent_classification', status: 'completed', message: 'Intent identified: Analytics & Graph (Regional Distribution)' },
+            { stage: 'vector_search', status: 'completed', message: 'Retrieved 3,420 regional ledger partitions' },
+            { stage: 'sql_execution', status: 'completed', message: 'Aggregated regional partition records in SAP HANA' },
+            { stage: 'final_response', status: 'completed', message: 'Synthesized regional projection breakdown' },
+          ],
           text: 'Evaluated 3,420 regional ledger partitions in SAP HANA. North America continues to lead total volume at $82.4M (44.7% share), with EMEA growing rapidly at +18% YoY driven by enterprise industrial agreements.',
           chartData: {
             title: 'Net Revenue Distribution by Global Region',
@@ -261,11 +412,18 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
           id: 'msg-3-2',
           sender: 'agent',
           timestamp: 'Yesterday',
+          intent: 'order_lookup',
           agentMeta: {
             latency: '0.21s',
             cosineSim: '0.975',
             model: 'Llama-3.2 11B',
           },
+          processing: [
+            { stage: 'intent_classification', status: 'completed', message: 'Intent identified: Order Lookup (Sales Order SO-106760)' },
+            { stage: 'erp_lookup', status: 'completed', message: 'Queried SAP S/4HANA Sales & Distribution ERP' },
+            { stage: 'document_flow', status: 'completed', message: 'Verified 3 fulfilled line items and tax status' },
+            { stage: 'final_response', status: 'completed', message: 'Synthesized order status and line-item breakdown' },
+          ],
           text: 'Retrieved Order SO-106760 from SAP S/4HANA Sales & Distribution document flow. 3 items shipped, 1 in fulfillment staging. Realized margin is 44.2%, with automated tax compliance verified for Germany (MwSt 19%).',
           chartData: {
             title: 'Line Item Allocation for Order SO-106760',
@@ -382,7 +540,10 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
           // If returning user had opened a specific existing session, load its messages
           if (clientLastOpenedSessionId && sessions.some(s => s.SESSION_ID === clientLastOpenedSessionId)) {
             setActiveThreadId(clientLastOpenedSessionId);
-            loadThreadMessages(clientLastOpenedSessionId);
+            setLoadingSessionId(clientLastOpenedSessionId);
+            loadThreadMessages(clientLastOpenedSessionId).finally(() => {
+              setLoadingSessionId(null);
+            });
           }
         }
       } catch (err) {
@@ -520,11 +681,16 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
     return () => window.removeEventListener('click', handleWindowClick);
   }, []);
 
-  const handleSelectThread = (threadId: string) => {
+  const handleSelectThread = async (threadId: string) => {
     clientLastOpenedSessionId = threadId;
     setActiveThreadId(threadId);
     setMobileDrawerOpen(false);
-    loadThreadMessages(threadId);
+    setLoadingSessionId(threadId);
+    try {
+      await loadThreadMessages(threadId);
+    } finally {
+      setLoadingSessionId(null);
+    }
   };
 
   const handleCreateNewChat = () => {
@@ -602,10 +768,30 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
     };
 
     const agentMsgId = `agent-${Date.now()}`;
+    const lowerQ = query.toLowerCase();
+    let initialIntent = 'analytics_graph';
+    if (
+      lowerQ.includes('order') ||
+      lowerQ.includes('so-') ||
+      lowerQ.includes('fulfillment') ||
+      lowerQ.includes('so106760') ||
+      lowerQ.includes('106760')
+    ) {
+      initialIntent = 'order_lookup';
+    } else if (
+      lowerQ.includes('vector') ||
+      lowerQ.includes('hana') ||
+      lowerQ.includes('search') ||
+      lowerQ.includes('document')
+    ) {
+      initialIntent = 'hana_vector_search';
+    }
+
     const initialAgentMsg: ChatMessage = {
       id: agentMsgId,
       sender: 'agent',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      intent: initialIntent,
       agentMeta: {
         latency: 'Streaming...',
         cosineSim: '0.965',
@@ -614,9 +800,14 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
       text: '',
       processing: [
         {
-          stage: 'request_started',
+          stage: 'intent_classification',
           status: 'running',
-          message: 'Connecting to NVIDIA NIM & SAP HANA...',
+          message:
+            initialIntent === 'order_lookup'
+              ? 'Detecting intent: Order Lookup...'
+              : initialIntent === 'hana_vector_search'
+                ? 'Detecting intent: HANA Vector Search...'
+                : 'Detecting intent: Analytics & Graph...',
         },
       ],
       isStreaming: true,
@@ -660,8 +851,16 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                   } else {
                     updatedSteps = [...existingSteps, step];
                   }
+
+                  let newIntent = m.intent;
+                  const stepMsg = (step.message || '').toLowerCase();
+                  if (stepMsg.includes('order')) newIntent = 'order_lookup';
+                  else if (stepMsg.includes('vector') || stepMsg.includes('hana')) newIntent = 'hana_vector_search';
+                  else if (stepMsg.includes('analytics') || stepMsg.includes('graph')) newIntent = 'analytics_graph';
+
                   return {
                     ...m,
+                    intent: newIntent,
                     processing: updatedSteps,
                   };
                 }
@@ -738,7 +937,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                     graph_image: res.graph_image,
                     chart_type: res.chart_type,
                     insights: res.insights,
-                    intent: res.intent,
+                    intent: res.intent || initialIntent,
                     processing: completedProcessing,
                   };
                 }
@@ -876,90 +1075,119 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
         ];
       }
 
+      let detectedIntent = 'analytics_graph';
+      let intentStageMsg = 'Intent: Analytics & Graph';
+      if (
+        lower.includes('order') ||
+        lower.includes('so-') ||
+        lower.includes('fulfillment') ||
+        lower.includes('so106760') ||
+        lower.includes('106760')
+      ) {
+        detectedIntent = 'order_lookup';
+        intentStageMsg = 'Intent: Order Lookup';
+      } else if (
+        lower.includes('vector') ||
+        lower.includes('hana') ||
+        lower.includes('search') ||
+        lower.includes('document')
+      ) {
+        detectedIntent = 'hana_vector_search';
+        intentStageMsg = 'Intent: HANA Vector Search';
+      }
+
       // Step 1: Intent detection
       handleStep({
-        stage: 'intent_detection',
+        stage: 'intent_classification',
         status: 'running',
         message: 'Detecting enterprise analytics intent...',
       });
 
       setTimeout(() => {
         handleStep({
-          stage: 'intent_detection',
+          stage: 'intent_classification',
           status: 'completed',
-          message: 'Intent: Conversational KPI Analytics',
+          message: intentStageMsg,
         });
 
-        // Step 2: Vector retrieval
+        // Step 2: Vector retrieval or ERP lookup
+        const isOrder = detectedIntent === 'order_lookup';
         handleStep({
-          stage: 'vector_retrieval',
+          stage: isOrder ? 'erp_lookup' : 'vector_search',
           status: 'running',
-          message: 'Querying SAP HANA vector embeddings (cosine > 0.88)...',
+          message: isOrder
+            ? 'Connecting to SAP S/4HANA Sales & Distribution...'
+            : 'Querying SAP HANA vector embeddings (cosine > 0.88)...',
         });
 
         setTimeout(() => {
           handleStep({
-            stage: 'vector_retrieval',
+            stage: isOrder ? 'erp_lookup' : 'vector_search',
             status: 'completed',
-            message: 'Retrieved 3,248 vector chunks from SAP_HANA_SALES_FACT',
+            message: isOrder
+              ? 'Verified order record in SAP_S4HANA_SD_ORDERS'
+              : 'Retrieved 3,248 vector chunks from SAP_HANA_SALES_FACT',
           });
 
           // Step 3: LLM generation
           handleStep({
-            stage: 'llm_generation',
+            stage: 'final_response',
             status: 'running',
             message: 'Synthesizing response via NVIDIA NIM...',
           });
 
-          // Stream tokens in words
-          const words = responseText.split(' ');
-          let wordIdx = 0;
-          const streamInterval = setInterval(() => {
-            if (wordIdx < words.length) {
-              const chunk = words.slice(wordIdx, wordIdx + 3).join(' ') + ' ';
-              handleToken(chunk);
-              wordIdx += 3;
-            } else {
-              clearInterval(streamInterval);
-              handleStep({
-                stage: 'llm_generation',
-                status: 'completed',
-                message: 'Response synthesized via NVIDIA NIM',
-              });
+          setTimeout(() => {
+            // Stream tokens in words
+            const words = responseText.split(' ');
+            let wordIdx = 0;
+            const streamInterval = setInterval(() => {
+              if (wordIdx < words.length) {
+                const chunk = words.slice(wordIdx, wordIdx + 3).join(' ') + ' ';
+                handleToken(chunk);
+                wordIdx += 3;
+              } else {
+                clearInterval(streamInterval);
+                handleStep({
+                  stage: 'final_response',
+                  status: 'completed',
+                  message: 'Response synthesized via NVIDIA NIM',
+                });
 
-              setThreads(prev =>
-                prev.map(t => {
-                  if (t.id === activeThreadId) {
-                    return {
-                      ...t,
-                      messages: t.messages.map(m => {
-                        if (m.id === agentMsgId) {
-                          return {
-                            ...m,
-                            isStreaming: false,
-                            chartData,
-                            riskFactors,
-                            sources: `SAP_HANA_SALES_FACT (${retrievedDocs.length * 1240} rows evaluated) · Vector Cosine Similarity: 0.952 · HANA Cloud Tenant us10`,
-                            retrievedDocs,
-                            agentMeta: {
-                              latency: '0.24s',
-                              cosineSim: '0.965',
-                              model: 'NVIDIA NIM (Llama-3.2 11B) / SAP AI Core',
-                            },
-                          };
-                        }
-                        return m;
-                      }),
-                    };
-                  }
-                  return t;
-                })
-              );
-              setIsSubmitting(false);
-            }
-          }, 30);
-        }, 280);
-      }, 200);
+                setThreads(prev =>
+                  prev.map(t => {
+                    if (t.id === activeThreadId) {
+                      return {
+                        ...t,
+                        messages: t.messages.map(m => {
+                          if (m.id === agentMsgId) {
+                            return {
+                              ...m,
+                              isStreaming: false,
+                              intent: detectedIntent,
+                              chartData,
+                              riskFactors,
+                              sources: `SAP_HANA_SALES_FACT (${retrievedDocs.length * 1240} rows evaluated) · Vector Cosine Similarity: 0.952 · HANA Cloud Tenant us10`,
+                              retrievedDocs,
+                              agentMeta: {
+                                latency: '0.24s',
+                                cosineSim: '0.965',
+                                model: 'NVIDIA NIM (Llama-3.2 11B) / SAP AI Core',
+                              },
+                            };
+                          }
+                          return m;
+                        }),
+                      };
+                    }
+                    return t;
+                  })
+                );
+                setIsSubmitting(false);
+              }
+            }, 30);
+          }, 450);
+        }, 650);
+      }, 550);
     };
 
     sendChatMessageStream(
@@ -1263,75 +1491,81 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                             </span>
                           </div>
 
-                          {/* Three-Dot Menu Action Button (Reveals on Hover) */}
-                          <div
-                            className="relative shrink-0 ml-1"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveMenuThreadId(isMenuOpen ? null : thread.id);
-                              }}
-                              title="Chat options"
-                              aria-label="Chat options"
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-opacity hover:bg-[#F1F5F9] text-[#64748B] hover:text-[#0F172A] ${isMenuOpen ? 'opacity-100 bg-[#F1F5F9] text-[#0F172A]' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
-                                }`}
+                          {/* Three-Dot Menu Action Button or Session Loading Spinner */}
+                          {loadingSessionId === thread.id ? (
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ml-1 text-[#7C3AED]" title="Loading session data...">
+                              <span className="material-symbols-outlined text-[17px] animate-spin">progress_activity</span>
+                            </div>
+                          ) : (
+                            <div
+                              className="relative shrink-0 ml-1"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              <span className="material-symbols-outlined text-[17px]">more_vert</span>
-                            </button>
-
-                            {/* Three-dot Dropdown Menu */}
-                            {isMenuOpen && (
-                              <div
-                                className="absolute right-0 top-8 w-44 rounded-xl bg-white border border-[#E2E8F0] shadow-xl py-1 z-30 animate-in fade-in zoom-in-95 text-left"
-                                onClick={(e) => e.stopPropagation()}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuThreadId(isMenuOpen ? null : thread.id);
+                                }}
+                                title="Chat options"
+                                aria-label="Chat options"
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-opacity hover:bg-[#F1F5F9] text-[#64748B] hover:text-[#0F172A] ${isMenuOpen ? 'opacity-100 bg-[#F1F5F9] text-[#0F172A]' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+                                  }`}
                               >
-                                {/* Rename Action */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveMenuThreadId(null);
-                                    setThreadToRename(thread);
-                                    setRenameTitleInput(thread.title);
-                                  }}
-                                  className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
-                                >
-                                  <span className="material-symbols-outlined text-[16px] text-[#64748B]">edit</span>
-                                  <span>Rename</span>
-                                </button>
+                                <span className="material-symbols-outlined text-[17px]">more_vert</span>
+                              </button>
 
-                                {/* Export Action */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveMenuThreadId(null);
-                                    handleExportMarkdown(thread);
-                                  }}
-                                  className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
+                              {/* Three-dot Dropdown Menu */}
+                              {isMenuOpen && (
+                                <div
+                                  className="absolute right-0 top-8 w-44 rounded-xl bg-white border border-[#E2E8F0] shadow-xl py-1 z-30 animate-in fade-in zoom-in-95 text-left"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  <span className="material-symbols-outlined text-[16px] text-[#64748B]">download</span>
-                                  <span>Export MD</span>
-                                </button>
+                                  {/* Rename Action */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveMenuThreadId(null);
+                                      setThreadToRename(thread);
+                                      setRenameTitleInput(thread.title);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px] text-[#64748B]">edit</span>
+                                    <span>Rename</span>
+                                  </button>
 
-                                <div className="my-1 border-t border-[#E2E8F0]" />
+                                  {/* Export Action */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveMenuThreadId(null);
+                                      handleExportMarkdown(thread);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px] text-[#64748B]">download</span>
+                                    <span>Export MD</span>
+                                  </button>
 
-                                {/* Delete Chat Action */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveMenuThreadId(null);
-                                    setThreadToDelete(thread);
-                                  }}
-                                  className="w-full px-3 py-1.5 text-xs text-[#DC2626] hover:bg-[#FEF2F2] flex items-center gap-2 transition-colors font-medium"
-                                >
-                                  <span className="material-symbols-outlined text-[16px] text-[#DC2626]">delete</span>
-                                  <span>Delete Chat</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                                  <div className="my-1 border-t border-[#E2E8F0]" />
+
+                                  {/* Delete Chat Action */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveMenuThreadId(null);
+                                      setThreadToDelete(thread);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-xs text-[#DC2626] hover:bg-[#FEF2F2] flex items-center gap-2 transition-colors font-medium"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px] text-[#DC2626]">delete</span>
+                                    <span>Delete Chat</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1455,8 +1689,25 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
         {/* ============================================================ */}
         {/* CHAT CONVERSATION AREA: The Primary Scrollable Region */}
         {/* ============================================================ */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-6 scroll-touch min-h-0 bg-[#F8FAFC]/50">
-          {messages.length === 0 ? (
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-6 scroll-touch min-h-0 bg-[#F8FAFC]/50 relative">
+          {loadingSessionId ? (
+            /* ============================================================ */
+            /* Session Loading State: Visible while selected session loads  */
+            /* ============================================================ */
+            <div className="h-full min-h-[340px] flex flex-col items-center justify-center max-w-sm mx-auto text-center px-4 py-16 animate-in fade-in duration-150">
+              <div className="w-14 h-14 rounded-2xl bg-[#F5F3FF] border border-[#DDD6FE] flex items-center justify-center text-[#7C3AED] shadow-sm mb-4">
+                <span className="material-symbols-outlined text-[28px] animate-spin text-[#7C3AED]">
+                  progress_activity
+                </span>
+              </div>
+              <h3 className="font-headline-sm text-base text-[#0F172A] font-semibold">
+                Loading Conversation History...
+              </h3>
+              <p className="text-body-sm text-xs text-[#64748B] mt-1.5 max-w-xs leading-relaxed">
+                Retrieving session messages and vector grounding records
+              </p>
+            </div>
+          ) : messages.length === 0 ? (
             /* ============================================================ */
             /* Empty State: Clean Welcome & Suggested Prompt Starters */
             /* ============================================================ */
@@ -1546,6 +1797,11 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
 
               /* Assistant Message Bubble (Left-aligned) */
               const areDocsExpanded = expandedDocMessageId === msg.id;
+              const isPipelineExpanded = !!expandedPipelineMsgIds[msg.id];
+              const intentBadge = getIntentBadge(msg);
+              const runningStep = (msg.processing || []).find(s => s.status === 'running');
+              const lastCompletedStep = [...(msg.processing || [])].reverse().find(s => s.status === 'completed');
+              const activeStep = runningStep || lastCompletedStep || (msg.processing ? msg.processing[0] : null);
 
               return (
                 <div key={msg.id} className="flex items-start gap-3 max-w-4xl mr-auto">
@@ -1555,12 +1811,34 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                   </div>
 
                   <div className="flex-1 flex flex-col space-y-2.5 min-w-0">
-                    {/* Assistant Header & Model Badge */}
+                    {/* Assistant Header & Model Badge with Elevated Single Intent Badge */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center flex-wrap gap-2">
                         <span className="text-xs font-semibold text-[#0F172A]">
                           NEOVATIC Assistant
                         </span>
+                        <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
+                        {/* High-Level Polished Intent Badge: Clickable to expand/collapse steps */}
+                        {intentBadge && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => togglePipelineDrawer(msg.id)}
+                              title="Click to expand/collapse sequential processing steps"
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${intentBadge.badgeClass} shadow-2xs hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer`}
+                            >
+                              <span>{intentBadge.icon}</span>
+                              <span>{intentBadge.label}</span>
+                              <span
+                                className={`material-symbols-outlined text-[13px] transition-transform duration-200 ${isPipelineExpanded ? 'rotate-180' : ''
+                                  }`}
+                              >
+                                expand_more
+                              </span>
+                            </button>
+                            <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
+                          </>
+                        )}
                         <span className="text-[11px] text-[#7C3AED] font-medium px-2 py-0.5 rounded-full bg-[#F5F3FF] border border-[#DDD6FE]">
                           {msg.agentMeta?.model || 'Llama-3.2 11B'}
                         </span>
@@ -1581,38 +1859,158 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
 
                     {/* Assistant Response Content Card */}
                     <div className="bg-white border border-[#E2E8F0] rounded-2xl rounded-tl-xs p-4 sm:p-5 text-[#0F172A] text-sm leading-relaxed shadow-xs space-y-4">
-                      {/* Real-time Progress Pipeline Stepper / Stages */}
-                      {msg.processing && msg.processing.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 pb-2.5 border-b border-[#E2E8F0]/70">
-                          {msg.processing.map((step, idx) => {
-                            const isRunning = step.status === 'running';
-                            const isDone = step.status === 'completed';
-                            const isErr = step.status === 'failed' || step.status === 'error';
-                            return (
-                              <div
-                                key={idx}
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all ${isRunning
-                                    ? 'bg-violet-50 text-violet-700 border border-violet-200 shadow-2xs'
-                                    : isDone
-                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                      : isErr
-                                        ? 'bg-red-50 text-red-700 border border-red-200'
-                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                      {/* Before / while the bot displays its response: Show intent/process currently working on */}
+                      {msg.isStreaming && msg.processing && msg.processing.length > 0 && (
+                        <div className="rounded-xl border border-indigo-200/90 bg-gradient-to-r from-[#F8FAFC] via-[#F5F3FF]/50 to-[#F0FDFA]/50 shadow-2xs overflow-hidden transition-all">
+                          {/* Active Intent / Ongoing Process Bar (Clickable to expand/collapse vertically) */}
+                          <div
+                            onClick={() => togglePipelineDrawer(msg.id)}
+                            className="w-full flex items-center justify-between p-2.5 sm:p-3 text-left hover:bg-slate-100/70 transition-colors cursor-pointer select-none group"
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                togglePipelineDrawer(msg.id);
+                              }
+                            }}
+                            aria-expanded={isPipelineExpanded}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-wrap sm:flex-nowrap">
+                              {/* Clickable Active Intent Badge */}
+                              {intentBadge && (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${intentBadge.badgeClass} shadow-2xs shrink-0 group-hover:shadow-xs transition-shadow`}
+                                >
+                                  <span>{intentBadge.icon}</span>
+                                  <span>{intentBadge.label}</span>
+                                </span>
+                              )}
+
+                              {/* Live indicator if active process is ongoing */}
+                              <span className="relative flex h-2 w-2 shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-600" />
+                              </span>
+
+                              {/* Current Process it is working on */}
+                              <div className="min-w-0 text-xs text-[#1E293B]">
+                                <span className="text-[#64748B] mr-1.5 font-medium">
+                                  Working on:
+                                </span>
+                                <span className="font-semibold text-[#0F172A] truncate">
+                                  {activeStep?.message || activeStep?.stage || 'Enterprise query processing...'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Collapse / Expand Toggle Affordance */}
+                            <div className="flex items-center gap-1 text-[#64748B] group-hover:text-[#0F172A] text-xs shrink-0 ml-2">
+                              <span className="text-[11px] font-medium hidden sm:inline">
+                                {isPipelineExpanded ? 'Collapse steps' : 'Click active intent to expand'}
+                              </span>
+                              <span
+                                className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${isPipelineExpanded ? 'rotate-180' : ''
                                   }`}
                               >
-                                {isRunning && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-violet-600 animate-ping mr-0.5" />
-                                )}
-                                {isDone && (
-                                  <span className="material-symbols-outlined text-[13px] text-emerald-600">check_circle</span>
-                                )}
-                                {isErr && (
-                                  <span className="material-symbols-outlined text-[13px] text-red-600">error</span>
-                                )}
-                                <span>{step.message || step.stage}</span>
+                                expand_more
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Expanded Vertical Sequence of Processing Steps */}
+                          {isPipelineExpanded && (
+                            <div className="px-3.5 pb-3.5 pt-2 border-t border-slate-200/80 bg-white/95 animate-in fade-in slide-in-from-top-1 space-y-3">
+                              <div className="flex items-center justify-between px-1">
+                                <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider font-mono">
+                                  Sequential Processing Steps
+                                </span>
+                                <span className="text-[10px] text-[#64748B] font-mono">
+                                  {msg.processing.filter(p => p.status === 'completed').length} of {msg.processing.length} completed
+                                </span>
                               </div>
-                            );
-                          })}
+
+                              {/* Vertical Connected Stepper */}
+                              <div className="relative pl-7 space-y-2.5 before:absolute before:left-[11px] before:top-2.5 before:bottom-2.5 before:w-[2px] before:bg-slate-200">
+                                {msg.processing.map((step, idx) => {
+                                  const isRunning = step.status === 'running';
+                                  const isDone = step.status === 'completed';
+                                  const isErr = step.status === 'failed' || step.status === 'error';
+                                  return (
+                                    <div key={idx} className="relative flex items-start gap-3">
+                                      {/* Vertical Step Node */}
+                                      <div
+                                        className={`absolute -left-7 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${isRunning
+                                            ? 'bg-violet-600 text-white ring-4 ring-violet-100 shadow-sm'
+                                            : isDone
+                                              ? 'bg-emerald-600 text-white shadow-2xs'
+                                              : isErr
+                                                ? 'bg-red-600 text-white'
+                                                : 'bg-slate-200 text-slate-600'
+                                          }`}
+                                      >
+                                        {isDone ? (
+                                          <span className="material-symbols-outlined text-[14px]">check</span>
+                                        ) : isErr ? (
+                                          <span className="material-symbols-outlined text-[14px]">priority_high</span>
+                                        ) : isRunning ? (
+                                          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                                        ) : (
+                                          <span>{idx + 1}</span>
+                                        )}
+                                      </div>
+
+                                      {/* Step Card Content */}
+                                      <div
+                                        className={`flex-1 rounded-xl p-2.5 sm:p-3 border transition-all text-xs ${isRunning
+                                            ? 'bg-violet-50/80 border-violet-200 shadow-2xs'
+                                            : isDone
+                                              ? 'bg-[#F8FAFC] border-slate-200'
+                                              : 'bg-slate-50 border-slate-200 opacity-70'
+                                          }`}
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="font-semibold text-[#0F172A] text-[12px]">
+                                            {formatStageTitle(step.stage)}
+                                          </span>
+                                          <span
+                                            className={`text-[10px] font-medium font-mono px-2 py-0.5 rounded-full capitalize ${isRunning
+                                                ? 'bg-violet-100 text-violet-700 animate-pulse'
+                                                : isDone
+                                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                  : isErr
+                                                    ? 'bg-red-50 text-red-700 border border-red-200'
+                                                    : 'bg-slate-100 text-slate-600'
+                                              }`}
+                                          >
+                                            {isRunning ? 'In progress...' : step.status}
+                                          </span>
+                                        </div>
+                                        <p className="text-slate-600 text-[11px] mt-1 leading-relaxed font-sans">
+                                          {step.message || 'Executing stage in sequence...'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Collapse Button to close view */}
+                              <div className="flex justify-end pt-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    togglePipelineDrawer(msg.id);
+                                  }}
+                                  className="text-[11px] font-medium text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors px-2.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+                                >
+                                  <span>Collapse to clean view</span>
+                                  <span className="material-symbols-outlined text-[15px]">expand_less</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -1784,6 +2182,78 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                           )}
                         </div>
                       )}
+
+                      {/* Collapsible Pipeline Execution Audit Drawer (Collapsed by default once completed) */}
+                      {!msg.isStreaming && msg.processing && msg.processing.length > 0 && (
+                        <div className="pt-2 border-t border-[#E2E8F0]">
+                          <button
+                            type="button"
+                            onClick={() => togglePipelineDrawer(msg.id)}
+                            className="w-full flex items-center justify-between p-2 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-xs font-medium text-[#475569] transition-colors group"
+                            aria-expanded={isPipelineExpanded}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-amber-500 font-bold">⚡</span>
+                              <span className="font-semibold text-[#0F172A]">
+                                Pipeline Audit ({msg.processing.length} stages)
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 font-mono">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                Completed
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[#64748B] group-hover:text-[#0F172A]">
+                              <span className="text-[11px] hidden sm:inline">
+                                {isPipelineExpanded ? 'Hide audit trail' : 'View audit trail'}
+                              </span>
+                              <span
+                                className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${isPipelineExpanded ? 'rotate-180' : ''
+                                  }`}
+                              >
+                                expand_more
+                              </span>
+                            </div>
+                          </button>
+
+                          {isPipelineExpanded && (
+                            <div className="mt-2 space-y-1.5 animate-in fade-in slide-in-from-top-1">
+                              {msg.processing.map((step, idx) => {
+                                const isDone = step.status === 'completed';
+                                const isErr = step.status === 'failed' || step.status === 'error';
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-start gap-2.5 text-xs hover:border-[#CBD5E1] transition-colors"
+                                  >
+                                    <div className="mt-0.5 shrink-0">
+                                      {isDone ? (
+                                        <span className="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
+                                      ) : isErr ? (
+                                        <span className="material-symbols-outlined text-[15px] text-red-600">error</span>
+                                      ) : (
+                                        <span className="w-2 h-2 rounded-full bg-slate-400 m-1 inline-block" />
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="font-semibold text-[#0F172A] text-[12px]">
+                                          {formatStageTitle(step.stage)}
+                                        </span>
+                                        <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-mono capitalize">
+                                          {step.status}
+                                        </span>
+                                      </div>
+                                      <p className="text-[#475569] text-[11px] mt-0.5 leading-relaxed font-sans">
+                                        {step.message || 'Stage processed successfully'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Assistant Actions Bar */}
@@ -1824,8 +2294,8 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
             })
           )}
 
-          {/* Submitting / Retrieving State */}
-          {isSubmitting && (
+          {/* Submitting / Retrieving State - only fallback if no streaming message in thread */}
+          {isSubmitting && !messages.some(m => m.isStreaming) && (
             <div className="flex items-start gap-3 max-w-2xl mr-auto animate-in fade-in">
               <div className="w-8 h-8 rounded-xl bg-[#7C3AED] text-white flex items-center justify-center shrink-0 shadow-sm animate-pulse">
                 <span className="material-symbols-outlined text-[18px]">auto_awesome</span>

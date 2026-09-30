@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   TOP_PRODUCTS,
   REGIONAL_MARKET_SHARE,
@@ -36,9 +36,15 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
   const [countryLimit, setCountryLimit] = useState<number>(5);
   const [categoryLimit, setCategoryLimit] = useState<number>(5);
 
-  // ── Requirement 3: Vertical Quarterly Chart State & Year Filter ────────────
+  // ── Requirement 3: Vertical Quarterly Chart State & Dynamic Cursor Tooltip ─
   const [selectedQuarterYear, setSelectedQuarterYear] = useState<string>('All');
-  const [hoveredQuarterIdx, setHoveredQuarterIdx] = useState<number | null>(null);
+  const quarterChartContainerRef = useRef<HTMLDivElement>(null);
+  const [quarterTooltip, setQuarterTooltip] = useState<{
+    idx: number;
+    x: number;
+    y: number;
+    barType?: 'actual' | 'target' | null;
+  } | null>(null);
 
   // ── Requirement 4: Top Performing Products Leaderboard Pagination ─────────
   const [leaderboardPage, setLeaderboardPage] = useState<number>(0);
@@ -1032,7 +1038,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
                   <select
                     id="quarter-year-select"
                     value={selectedQuarterYear}
-                    onChange={(e) => setSelectedQuarterYear(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedQuarterYear(e.target.value);
+                      setQuarterTooltip(null);
+                    }}
                     className="h-7.5 pl-2.5 pr-7 rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] font-label-sm text-xs font-semibold hover:border-[#2563EB] focus:outline-none cursor-pointer appearance-none shadow-2xs"
                   >
                     <option value="All">All Years</option>
@@ -1068,32 +1077,66 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
 
             {/* Vertical Bar / Column Chart Canvas */}
             <div className="w-full overflow-x-auto pb-1 scroll-touch">
-              <div className="relative min-w-[280px] w-full h-[225px] flex flex-col justify-end pt-5">
+              <div
+                ref={quarterChartContainerRef}
+                onMouseLeave={() => setQuarterTooltip(null)}
+                className="relative min-w-[280px] w-full h-[225px] flex flex-col justify-end pt-5"
+              >
                 {/* Horizontal Guide Reference Lines */}
                 <div className="absolute inset-x-0 top-7 border-b border-dashed border-[#E2E8F0]" />
                 <div className="absolute inset-x-0 top-18 border-b border-dashed border-[#E2E8F0]" />
                 <div className="absolute inset-x-0 top-29 border-b border-dashed border-[#E2E8F0]" />
                 <div className="absolute inset-x-0 bottom-12 border-b border-[#CBD5E1]" />
 
-                {/* Floating Tooltip Callout on Hover */}
-                {hoveredQuarterIdx !== null && parsedQuarters[hoveredQuarterIdx] && (
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-xl bg-[#0F172A] text-white text-xs shadow-xl border border-slate-700 pointer-events-none flex items-center gap-2.5 animate-in fade-in duration-100 whitespace-nowrap">
-                    <span className="font-semibold text-slate-200">
-                      {parsedQuarters[hoveredQuarterIdx].quarter}
-                    </span>
-                    <span className="text-[#60A5FA] font-mono font-medium">
-                      Act: ${(parsedQuarters[hoveredQuarterIdx].actual / 1e6).toFixed(1)}M
-                    </span>
-                    <span className="text-slate-400">/</span>
-                    <span className="text-slate-300 font-mono font-medium">
-                      Tgt: ${(parsedQuarters[hoveredQuarterIdx].target / 1e6).toFixed(1)}M
-                    </span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${parsedQuarters[hoveredQuarterIdx].attainmentPct >= 100
-                        ? 'bg-[#166534] text-[#DCFCE7]'
-                        : 'bg-[#92400E] text-[#FEF3C7]'
-                      }`}>
-                      {parsedQuarters[hoveredQuarterIdx].attainmentPct.toFixed(1)}%
-                    </span>
+                {/* Dynamic Cursor-Following Tooltip at Exact Location of Pointer/Data Point */}
+                {quarterTooltip !== null && parsedQuarters[quarterTooltip.idx] && (
+                  <div
+                    className="absolute z-30 pointer-events-none transition-all duration-75 ease-out whitespace-nowrap"
+                    style={{
+                      left: `${quarterTooltip.x}px`,
+                      top: `${quarterTooltip.y}px`,
+                      transform: `translate(${quarterTooltip.x < 110 ? '0%' : quarterTooltip.x > 320 ? '-100%' : '-50%'
+                        }, ${quarterTooltip.y < 85 ? '16px' : 'calc(-100% - 14px)'
+                        })`,
+                    }}
+                  >
+                    <div className="px-3.5 py-2.5 rounded-xl bg-[#0F172A] text-white text-xs shadow-2xl border border-slate-700/80 min-w-[190px]">
+                      <div className="flex items-center justify-between gap-3 pb-1.5 mb-1.5 border-b border-slate-800">
+                        <span className="font-semibold text-slate-100">
+                          {parsedQuarters[quarterTooltip.idx].quarter}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold font-mono ${parsedQuarters[quarterTooltip.idx].attainmentPct >= 100
+                          ? 'bg-[#166534] text-[#DCFCE7]'
+                          : 'bg-[#92400E] text-[#FEF3C7]'
+                          }`}>
+                          {parsedQuarters[quarterTooltip.idx].attainmentPct.toFixed(1)}% Attainment
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs">
+                        <div className={`flex items-center justify-between gap-3 ${quarterTooltip.barType === 'actual' ? 'text-white font-semibold' : 'text-slate-300'
+                          }`}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-xs bg-[#2563EB] shrink-0" />
+                            <span>Actual:</span>
+                          </div>
+                          <span className="font-mono text-[#60A5FA] font-semibold">
+                            ${(parsedQuarters[quarterTooltip.idx].actual / 1e6).toFixed(1)}M
+                          </span>
+                        </div>
+
+                        <div className={`flex items-center justify-between gap-3 ${quarterTooltip.barType === 'target' ? 'text-white font-semibold' : 'text-slate-300'
+                          }`}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-xs bg-[#CBD5E1] border border-[#94A3B8] shrink-0" />
+                            <span>Target:</span>
+                          </div>
+                          <span className="font-mono text-slate-200 font-semibold">
+                            ${(parsedQuarters[quarterTooltip.idx].target / 1e6).toFixed(1)}M
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1102,32 +1145,55 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
                   {parsedQuarters.map((q, idx) => {
                     const actualHeight = Math.max(6, (q.actual / maxQuarterVal) * 100);
                     const targetHeight = Math.max(6, (q.target / maxQuarterVal) * 100);
-                    const isHovered = hoveredQuarterIdx === idx;
+                    const isHovered = quarterTooltip?.idx === idx;
+
+                    const handleMove = (e: React.MouseEvent<HTMLDivElement>, barType?: 'actual' | 'target') => {
+                      if (!quarterChartContainerRef.current) return;
+                      const rect = quarterChartContainerRef.current.getBoundingClientRect();
+                      const x = Math.max(8, Math.min(e.clientX - rect.left, rect.width - 8));
+                      const y = Math.max(8, Math.min(e.clientY - rect.top, rect.height - 8));
+                      setQuarterTooltip({ idx, x, y, barType: barType || null });
+                    };
 
                     return (
                       <div
                         key={`${q.quarter}-${idx}`}
-                        onMouseEnter={() => setHoveredQuarterIdx(idx)}
-                        onMouseLeave={() => setHoveredQuarterIdx(null)}
+                        onMouseEnter={(e) => handleMove(e)}
+                        onMouseMove={(e) => handleMove(e)}
+                        onMouseLeave={() => setQuarterTooltip(null)}
                         className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer"
                       >
                         {/* Side-by-side vertical columns */}
                         <div className="flex items-end gap-1 sm:gap-1.5 w-full justify-center max-w-[56px] h-full">
                           {/* Actual Column */}
                           <div
+                            onMouseEnter={(e) => {
+                              e.stopPropagation();
+                              handleMove(e, 'actual');
+                            }}
+                            onMouseMove={(e) => {
+                              e.stopPropagation();
+                              handleMove(e, 'actual');
+                            }}
                             className={`w-3 sm:w-4 rounded-t-md transition-all duration-300 relative ${q.attainmentPct >= 100
-                                ? 'bg-[#2563EB] group-hover:bg-[#1D4ED8]'
-                                : 'bg-[#3B82F6] group-hover:bg-[#2563EB]'
-                              } ${isHovered ? 'ring-2 ring-[#2563EB] ring-offset-1' : ''}`}
+                              ? 'bg-[#2563EB] group-hover:bg-[#1D4ED8]'
+                              : 'bg-[#3B82F6] group-hover:bg-[#2563EB]'
+                              } ${isHovered && quarterTooltip?.barType === 'actual' ? 'ring-2 ring-[#2563EB] ring-offset-1 scale-105' : isHovered ? 'ring-1 ring-[#2563EB]' : ''}`}
                             style={{ height: `${actualHeight}%` }}
-                            title={`${q.quarter} Actual: $${(q.actual / 1e6).toFixed(1)}M`}
                           />
                           {/* Target Column */}
                           <div
-                            className={`w-3 sm:w-4 bg-[#CBD5E1] group-hover:bg-[#94A3B8] rounded-t-md transition-all duration-300 relative border-t-2 border-[#94A3B8] ${isHovered ? 'ring-2 ring-slate-400 ring-offset-1' : ''
+                            onMouseEnter={(e) => {
+                              e.stopPropagation();
+                              handleMove(e, 'target');
+                            }}
+                            onMouseMove={(e) => {
+                              e.stopPropagation();
+                              handleMove(e, 'target');
+                            }}
+                            className={`w-3 sm:w-4 bg-[#CBD5E1] group-hover:bg-[#94A3B8] rounded-t-md transition-all duration-300 relative border-t-2 border-[#94A3B8] ${isHovered && quarterTooltip?.barType === 'target' ? 'ring-2 ring-slate-400 ring-offset-1 scale-105' : isHovered ? 'ring-1 ring-slate-300' : ''
                               }`}
                             style={{ height: `${targetHeight}%` }}
-                            title={`${q.quarter} Target: $${(q.target / 1e6).toFixed(1)}M`}
                           />
                         </div>
 
@@ -1139,8 +1205,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
 
                         {/* Attainment Badge */}
                         <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-medium mt-0.5 whitespace-nowrap ${q.attainmentPct >= 100
-                            ? 'bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0]'
-                            : 'bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]'
+                          ? 'bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0]'
+                          : 'bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]'
                           }`}>
                           {q.attainmentPct.toFixed(1)}%
                         </span>

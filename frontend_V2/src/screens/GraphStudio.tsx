@@ -1,6 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SCHEMA_COLUMNS } from '../data/mockData';
 import { generateCustomGraph, GraphResponse } from '../services/graphService';
+
+const PIPELINE_STEPS = [
+  'Schema & Temp Init: Inspecting schema & initializing script runtime…',
+  'Intent & Parameters: Resolving target dimension, metric & chart type…',
+  'Data Aggregation: Aggregating & filtering HANA column-store dataset…',
+  'Data Reconciliation: Validating pre-computed aggregated measures…',
+  'Script Generation: Synthesizing Matplotlib Python code via SAP AI Core…',
+  'Subprocess Execution: Running Python script in isolated subprocess…',
+  'Image Encoding: Converting generated Matplotlib figure to base64…',
+  'Insight Generation: Synthesizing analytical executive summary…',
+];
+
+const GraphStudioSkeleton: React.FC = () => {
+  const [stepIdx, setStepIdx] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStepIdx((prev) => Math.min(prev + 1, PIPELINE_STEPS.length - 1));
+    }, 450);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="bg-white p-6 sm:p-8 rounded-2xl border border-[#E2E8F0] shadow-sm space-y-6 my-6 animate-in fade-in">
+      <div className="w-full h-64 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-200">
+        <div className="flex flex-col items-center gap-3 text-slate-500">
+          <div className="w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center text-[#7C3AED] ring-8 ring-violet-50/50">
+            <span className="material-symbols-outlined text-[28px] animate-spin">refresh</span>
+          </div>
+          <div className="text-center">
+            <div className="font-label-md text-slate-800 font-semibold text-base">Executing Python Graph Agent Pipeline…</div>
+            <div className="text-xs text-slate-500 mt-0.5">POST /graph/generate · SAP AI Core Subprocess</div>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-2 max-w-lg mx-auto pt-2">
+        <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono font-medium pb-1 border-b border-slate-100">
+          <span>BACKEND EXECUTION STAGES</span>
+          <span>{stepIdx + 1} of {PIPELINE_STEPS.length}</span>
+        </div>
+        {PIPELINE_STEPS.map((step, i) => (
+          <div
+            key={step}
+            className={`flex items-center gap-3 text-xs transition-all duration-300 ${i < stepIdx
+                ? 'text-emerald-700 font-medium'
+                : i === stepIdx
+                  ? 'text-[#2563EB] font-semibold'
+                  : 'text-slate-400'
+              }`}
+          >
+            <div
+              className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors ${i < stepIdx
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : i === stepIdx
+                    ? 'bg-[#2563EB] text-white animate-pulse'
+                    : 'bg-slate-100 text-slate-400'
+                }`}
+            >
+              {i < stepIdx ? '✓' : i + 1}
+            </div>
+            <span className="truncate">{step}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 interface GraphStudioProps {
   initialPrompt?: string;
@@ -18,7 +85,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({
   const [aggregation, setAggregation] = useState('SUM');
   const [isGenerating, setIsGenerating] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
-  
+
   // Modals & Drawers
   const [schemaModalOpen, setSchemaModalOpen] = useState(false);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -64,7 +131,10 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({
     setIsGenerating(true);
     setErrorMessage(null);
     try {
-      const res = await generateCustomGraph(prompt);
+      const [res] = await Promise.all([
+        generateCustomGraph(prompt),
+        new Promise((resolve) => setTimeout(resolve, 3600)),
+      ]);
       setGeneratedImage(res.image_base64);
       setBackendInsights(res.insights ?? null);
       setRecordsMatched(res.records_matched ?? null);
@@ -90,7 +160,10 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({
     setIsGenerating(true);
     setErrorMessage(null);
     try {
-      const res = await generateCustomGraph(presetPrompt);
+      const [res] = await Promise.all([
+        generateCustomGraph(presetPrompt),
+        new Promise((resolve) => setTimeout(resolve, 3600)),
+      ]);
       setGeneratedImage(res.image_base64);
       setBackendInsights(res.insights ?? null);
       setRecordsMatched(res.records_matched ?? null);
@@ -157,19 +230,17 @@ print("Chart generated successfully.")
     showToast('Python code copied to clipboard!');
   };
 
-  const downloadSVG = () => {
-    const svgElement = document.getElementById('studio-svg-chart');
-    if (!svgElement) return;
-    const serializer = new XMLSerializer();
-    const source = serializer.serializeToString(svgElement);
-    const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+  const handleDownload = () => {
+    if (!generatedImage) {
+      showToast('No generated graph to download');
+      return;
+    }
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `HANA_Custom_Graph_${Date.now()}.svg`;
+    a.href = generatedImage;
+    const isSvg = generatedImage.includes('image/svg+xml');
+    a.download = `HANA_Generated_Chart_${Date.now()}.${isSvg ? 'svg' : 'png'}`;
     a.click();
-    URL.revokeObjectURL(url);
-    showToast('Graph downloaded as SVG');
+    showToast(`Graph downloaded as ${isSvg ? 'SVG' : 'PNG'}`);
   };
 
   const filteredSchema = SCHEMA_COLUMNS.filter(col =>
@@ -209,16 +280,16 @@ print("Chart generated successfully.")
 
         {/* Global Canvas Actions */}
         <div className="flex items-center gap-space-sm self-start lg:self-auto flex-wrap">
-          <button 
+          <button
             onClick={() => setSchemaModalOpen(true)}
-            className="flex items-center gap-space-xs px-4 py-2 rounded-full bg-white hover:bg-[#F1F5F9] text-[#0F172A] border border-[#CBD5E1] transition-colors font-label-md text-label-md shadow-2xs" 
+            className="flex items-center gap-space-xs px-4 py-2 rounded-full bg-white hover:bg-[#F1F5F9] text-[#0F172A] border border-[#CBD5E1] transition-colors font-label-md text-label-md shadow-2xs"
             id="schemaModalTrigger"
           >
             <span className="material-symbols-outlined text-[16px] text-[#2563EB]">database</span>
             <span>Schema Columns (39 Available)</span>
           </button>
 
-          <button 
+          <button
             onClick={() => setHistoryModalOpen(true)}
             className="flex items-center gap-space-xs px-4 py-2 rounded-full bg-white hover:bg-[#F1F5F9] text-[#475569] hover:text-[#0F172A] border border-[#CBD5E1] transition-colors font-label-md text-label-md shadow-2xs"
           >
@@ -226,7 +297,7 @@ print("Chart generated successfully.")
             <span>History</span>
           </button>
 
-          <button 
+          <button
             onClick={() => setConfigModalOpen(true)}
             className="flex items-center gap-space-xs px-4 py-2 rounded-full bg-white hover:bg-[#F1F5F9] text-[#475569] hover:text-[#0F172A] border border-[#CBD5E1] transition-colors font-label-md text-label-md shadow-2xs"
           >
@@ -255,12 +326,12 @@ print("Chart generated successfully.")
 
           {/* Natural Language Textarea */}
           <div className="relative">
-            <textarea 
+            <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              className="w-full bg-transparent resize-none font-body-lg text-body-lg text-[#0F172A] placeholder:text-[#64748B] focus:outline-none leading-relaxed" 
-              id="promptInput" 
-              placeholder="Ask a question or describe the analytical chart you want to build..." 
+              className="w-full bg-transparent resize-none font-body-lg text-body-lg text-[#0F172A] placeholder:text-[#64748B] focus:outline-none leading-relaxed"
+              id="promptInput"
+              placeholder="Ask a question or describe the analytical chart you want to build..."
               rows={2}
             />
           </div>
@@ -326,7 +397,7 @@ print("Chart generated successfully.")
               </div>
 
               {/* Aggregation Pill */}
-              <button 
+              <button
                 onClick={() => setAggregation(prev => prev === 'SUM' ? 'AVG' : prev === 'AVG' ? 'COUNT' : 'SUM')}
                 className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] font-label-sm text-label-sm hover:bg-[#DBEAFE] transition-colors"
                 title="Click to cycle aggregation: SUM, AVG, COUNT"
@@ -335,10 +406,10 @@ print("Chart generated successfully.")
               </button>
             </div>
 
-            <button 
+            <button
               onClick={handleGenerate}
               disabled={isGenerating}
-              className="w-full sm:w-auto justify-center flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-label-md text-label-md shadow-xs transition-all disabled:opacity-70" 
+              className="w-full sm:w-auto justify-center flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-label-md text-label-md shadow-xs transition-all disabled:opacity-70"
               id="generateBtn"
             >
               {isGenerating ? (
@@ -369,11 +440,10 @@ print("Chart generated successfully.")
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
             {/* Preset 1 */}
-            <button 
+            <button
               onClick={() => handlePresetClick('Monthly revenue trend with 30-day rolling moving average and seasonal band', 'SPLINE')}
-              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${
-                activePreset === 'SPLINE' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
-              }`}
+              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${activePreset === 'SPLINE' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
+                }`}
             >
               <div className="flex items-center justify-between w-full">
                 <span className="material-symbols-outlined text-[18px] text-[#2563EB]">
@@ -388,11 +458,10 @@ print("Chart generated successfully.")
             </button>
 
             {/* Preset 2 */}
-            <button 
+            <button
               onClick={() => handlePresetClick('Quarterly gross profit comparison across 2023, 2024, and 2025 by Product Line', 'GROUPED')}
-              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${
-                activePreset === 'GROUPED' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
-              }`}
+              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${activePreset === 'GROUPED' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
+                }`}
             >
               <div className="flex items-center justify-between w-full">
                 <span className="material-symbols-outlined text-[18px] text-[#4F46E5]">
@@ -407,11 +476,10 @@ print("Chart generated successfully.")
             </button>
 
             {/* Preset 3 */}
-            <button 
+            <button
               onClick={() => handlePresetClick('Revenue contribution by commercial category as a proportional donut chart with percent callouts', 'DONUT')}
-              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${
-                activePreset === 'DONUT' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
-              }`}
+              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${activePreset === 'DONUT' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
+                }`}
             >
               <div className="flex items-center justify-between w-full">
                 <span className="material-symbols-outlined text-[18px] text-[#7C3AED]">
@@ -426,11 +494,10 @@ print("Chart generated successfully.")
             </button>
 
             {/* Preset 4 */}
-            <button 
+            <button
               onClick={() => handlePresetClick('Top 10 products ranked by total gross margin USD in descending order', 'RANKING')}
-              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${
-                activePreset === 'RANKING' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
-              }`}
+              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${activePreset === 'RANKING' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
+                }`}
             >
               <div className="flex items-center justify-between w-full">
                 <span className="material-symbols-outlined text-[18px] text-[#0D9488]">
@@ -445,11 +512,10 @@ print("Chart generated successfully.")
             </button>
 
             {/* Preset 5 */}
-            <button 
+            <button
               onClick={() => handlePresetClick('Compare Net Revenue and Gross Margin percentage across EMEA, NA, APAC, and LATAM regions', 'GEO DUAL')}
-              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${
-                activePreset === 'GEO DUAL' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
-              }`}
+              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${activePreset === 'GEO DUAL' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
+                }`}
             >
               <div className="flex items-center justify-between w-full">
                 <span className="material-symbols-outlined text-[18px] text-[#0891B2]">
@@ -464,11 +530,10 @@ print("Chart generated successfully.")
             </button>
 
             {/* Preset 6 */}
-            <button 
+            <button
               onClick={() => handlePresetClick('Scatter plot showing DiscountPercent on X axis versus GrossMarginPercent on Y axis with linear regression fit', 'REGRESS')}
-              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${
-                activePreset === 'REGRESS' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
-              }`}
+              className={`preset-card group text-left p-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] transition-all shadow-xs flex flex-col justify-between h-28 border ${activePreset === 'REGRESS' ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-[#EFF6FF]/40' : 'border-[#E2E8F0]'
+                }`}
             >
               <div className="flex items-center justify-between w-full">
                 <span className="material-symbols-outlined text-[18px] text-[#D97706]">
@@ -487,295 +552,119 @@ print("Chart generated successfully.")
 
       {/* Generated Graph Result Canvas */}
       <div className="bg-white p-6 lg:p-8 rounded-2xl shadow-sm mb-space-xl border border-[#E2E8F0]">
-        {/* Execution Meta & Canvas Action Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 mb-6 border-b border-[#E2E8F0]">
-          <div className="flex items-center flex-wrap gap-2.5">
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0] font-label-sm text-label-sm font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]"></span>
-              <span>Executed in 312ms</span>
-            </div>
-            <span className="font-label-sm text-label-sm text-[#CBD5E1]">•</span>
-            <span className="font-label-sm text-label-sm text-[#475569]">{recordsMatched !== null ? `${recordsMatched.toLocaleString()} records matched` : '3,420 records matched'}</span>
-            <span className="font-label-sm text-label-sm text-[#CBD5E1]">•</span>
-            <span className="font-label-sm text-label-sm text-[#475569]">
-              Chart Type: {generatedChartType ?? 'Dual-Axis Spline Trendline'}
-            </span>
-          </div>
+        {/* While isGenerating: Show Backend Execution Steps */}
+        {isGenerating && <GraphStudioSkeleton />}
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <button 
-              onClick={() => setExpandedViewOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] font-label-md text-label-md transition-colors shadow-2xs"
-            >
-              <span className="material-symbols-outlined text-[16px]">fullscreen</span>
-              <span>Expand High-Res</span>
-            </button>
-            <button 
-              onClick={downloadSVG}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] font-label-md text-label-md transition-colors shadow-2xs"
-            >
-              <span className="material-symbols-outlined text-[16px]">download</span>
-              <span>Download PNG / SVG</span>
-            </button>
-            <button 
-              onClick={copyPythonCode}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] border border-[#BFDBFE] font-label-md text-label-md transition-colors shadow-2xs"
-            >
-              <span className="material-symbols-outlined text-[16px] text-[#2563EB]">code</span>
-              <span>Copy Python Code</span>
-            </button>
-          </div>
-        </div>
+        {/* When generatedImage is available: Show Live Generated Visualization */}
+        {!isGenerating && generatedImage && (
+          <div>
+            {/* Execution Meta & Canvas Action Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 mb-6 border-b border-[#E2E8F0]">
+              <div className="flex items-center flex-wrap gap-2.5">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0] font-label-sm text-label-sm font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]"></span>
+                  <span>Generated & Validated</span>
+                </div>
+                <span className="font-label-sm text-label-sm text-[#CBD5E1]">•</span>
+                <span className="font-label-sm text-label-sm text-[#475569]">
+                  {recordsMatched !== null ? `${recordsMatched.toLocaleString()} records matched` : 'HANA In-Memory Calculation'}
+                </span>
+                <span className="font-label-sm text-label-sm text-[#CBD5E1]">•</span>
+                <span className="font-label-sm text-label-sm text-[#475569]">
+                  Chart Type: {generatedChartType ?? chartType.replace('Auto-detect chart type', 'Auto')}
+                </span>
+              </div>
 
-        {/* Chart Legend & KPI Highlights */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6 px-2">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <span className="w-3.5 h-1.5 rounded-full bg-[#2563EB]"></span>
-              <span className="font-label-md text-label-md text-[#0F172A] font-semibold">
-                Net Revenue ($M) · Primary Axis
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3.5 h-1.5 rounded-full bg-[#0D9488]"></span>
-              <span className="font-label-md text-label-md text-[#0D9488] font-semibold">
-                Gross Margin % · Secondary Axis
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="font-label-sm text-label-sm text-[#64748B]">CURRENT RUN-RATE</div>
-              <div className="font-headline-sm text-headline-sm text-[#0F172A] font-semibold">
-                $48.2M <span className="font-label-sm text-label-sm text-[#16A34A] font-normal">(+14.2% YoY)</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setExpandedViewOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] font-label-md text-label-md transition-colors shadow-2xs"
+                >
+                  <span className="material-symbols-outlined text-[16px]">fullscreen</span>
+                  <span>Expand High-Res</span>
+                </button>
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] font-label-md text-label-md transition-colors shadow-2xs"
+                >
+                  <span className="material-symbols-outlined text-[16px]">download</span>
+                  <span>Download Image</span>
+                </button>
+                <button
+                  onClick={copyPythonCode}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] border border-[#BFDBFE] font-label-md text-label-md transition-colors shadow-2xs"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-[#2563EB]">code</span>
+                  <span>Copy Python Code</span>
+                </button>
               </div>
             </div>
-            <div className="text-right pl-4 border-l border-[#E2E8F0]">
-              <div className="font-label-sm text-label-sm text-[#64748B]">AVG GROSS MARGIN</div>
-              <div className="font-headline-sm text-headline-sm text-[#0F172A] font-semibold">
-                41.8% <span className="font-label-sm text-label-sm text-[#16A34A] font-normal">(+280 bps)</span>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Mobile Swipe Hint */}
-        <div className="flex sm:hidden items-center gap-1.5 text-[#64748B] text-[11px] mb-2 px-1">
-          <span className="material-symbols-outlined text-[14px]">swipe</span>
-          <span>Swipe horizontally to view full multi-month timeline</span>
-        </div>
-
-        {/* Rendered Chart Area — Shows backend image or fallback SVG */}
-        {generatedImage ? (
-          <div className="w-full overflow-x-auto scroll-touch">
-            <div className="min-w-[760px] py-4 flex items-center justify-center">
-              <img 
-                src={generatedImage} 
-                alt="Generated visualization" 
-                className="max-w-full h-auto rounded-xl shadow-sm border border-[#E2E8F0]"
-              />
-            </div>
-            {backendInsights && (
-              <div className="mt-4 p-4 rounded-xl bg-[#F5F3FF] border border-[#DDD6FE]">
-                <div className="flex items-start gap-2">
-                  <span className="material-symbols-outlined text-[#7C3AED] text-[18px] mt-0.5">insights</span>
-                  <div>
-                    <span className="font-label-md text-label-md font-semibold text-[#6D28D9]">AI Executive Insights</span>
-                    <p className="font-body-sm text-body-sm text-[#5B21B6] mt-1 whitespace-pre-line">{backendInsights}</p>
+            {/* Rendered Chart Area — Clicking expands high-res modal with actual image */}
+            <div className="w-full overflow-x-auto scroll-touch">
+              <div
+                onClick={() => setExpandedViewOpen(true)}
+                className="min-w-[760px] py-4 flex flex-col items-center justify-center cursor-pointer group"
+                title="Click to expand high-resolution visualization"
+              >
+                <div className="relative inline-block max-w-full">
+                  <img
+                    src={generatedImage}
+                    alt="Generated visualization"
+                    className="max-w-full h-auto rounded-xl shadow-sm border border-[#E2E8F0] group-hover:ring-4 group-hover:ring-violet-200 transition-all"
+                  />
+                  <div className="absolute bottom-3 right-3 bg-slate-900/85 text-white text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md">
+                    <span className="material-symbols-outlined text-[16px]">fullscreen</span>
+                    <span>Click to expand high-res</span>
                   </div>
                 </div>
               </div>
-            )}
-            {errorMessage && (
-              <div className="mt-4 p-4 rounded-xl bg-[#FEF2F2] border border-[#FECACA]">
-                <div className="flex items-start gap-2">
-                  <span className="material-symbols-outlined text-[#DC2626] text-[18px] mt-0.5">error</span>
-                  <p className="font-body-sm text-body-sm text-[#991B1B]">{errorMessage}</p>
+
+              {backendInsights && (
+                <div className="mt-6 p-5 rounded-2xl bg-[#F5F3FF] border border-[#DDD6FE]">
+                  <div className="flex items-start gap-3">
+                    <span className="material-symbols-outlined text-[#7C3AED] text-[20px] mt-0.5">insights</span>
+                    <div>
+                      <span className="font-label-md text-label-md font-semibold text-[#6D28D9]">AI Executive Insights</span>
+                      <p className="font-body-sm text-body-sm text-[#5B21B6] mt-1 whitespace-pre-line leading-relaxed">{backendInsights}</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              {errorMessage && (
+                <div className="mt-4 p-4 rounded-xl bg-[#FEF2F2] border border-[#FECACA]">
+                  <div className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-[#DC2626] text-[18px] mt-0.5">error</span>
+                    <p className="font-body-sm text-body-sm text-[#991B1B]">{errorMessage}</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        ) : (
-        <div className="w-full overflow-x-auto scroll-touch">
-          <div className="min-w-[760px] py-4">
-            <svg 
-              id="studio-svg-chart"
-              className="w-full h-auto text-on-surface select-none" 
-              viewBox="0 0 1000 380" 
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <defs>
-                <linearGradient id="studioRevGrad" x1="0%" x2="0%" y1="0%" y2="100%">
-                  <stop offset="0%" stopColor="#2563EB" stopOpacity="0.20"></stop>
-                  <stop offset="100%" stopColor="#2563EB" stopOpacity="0.01"></stop>
-                </linearGradient>
-                <linearGradient id="studioMarginGrad" x1="0%" x2="0%" y1="0%" y2="100%">
-                  <stop offset="0%" stopColor="#0D9488" stopOpacity="0.18"></stop>
-                  <stop offset="100%" stopColor="#0D9488" stopOpacity="0.01"></stop>
-                </linearGradient>
-              </defs>
-
-              {/* Background Subtle Horizontal Gridlines */}
-              <line stroke="#E2E8F0" strokeDasharray="4 4" x1="60" x2="940" y1="40" y2="40" />
-              <line stroke="#E2E8F0" strokeDasharray="4 4" x1="60" x2="940" y1="105" y2="105" />
-              <line stroke="#E2E8F0" strokeDasharray="4 4" x1="60" x2="940" y1="170" y2="170" />
-              <line stroke="#E2E8F0" strokeDasharray="4 4" x1="60" x2="940" y1="235" y2="235" />
-              <line stroke="#CBD5E1" x1="60" x2="940" y1="300" y2="300" />
-
-              {/* Y1 Axis Labels (Left: Net Revenue $M) */}
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="end" x="50" y="44">$60M</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="end" x="50" y="109">$45M</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="end" x="50" y="174">$30M</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="end" x="50" y="239">$15M</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="end" x="50" y="304">$0M</text>
-
-              {/* Y2 Axis Labels (Right: Gross Margin %) */}
-              <text className="text-[11px] font-label-md fill-[#0D9488]" textAnchor="start" x="950" y="44">60%</text>
-              <text className="text-[11px] font-label-md fill-[#0D9488]" textAnchor="start" x="950" y="109">45%</text>
-              <text className="text-[11px] font-label-md fill-[#0D9488]" textAnchor="start" x="950" y="174">30%</text>
-              <text className="text-[11px] font-label-md fill-[#0D9488]" textAnchor="start" x="950" y="239">15%</text>
-              <text className="text-[11px] font-label-md fill-[#0D9488]" textAnchor="start" x="950" y="304">0%</text>
-
-              {/* Area Fills under curves */}
-              <path 
-                d="M 80 230 C 150 220, 220 200, 290 190 C 360 180, 430 160, 500 135 C 570 110, 640 120, 710 95 C 780 70, 850 80, 920 60 L 920 300 L 80 300 Z" 
-                fill="url(#studioRevGrad)" 
-              />
-              <path 
-                d="M 80 200 C 150 195, 220 185, 290 175 C 360 165, 430 150, 500 145 C 570 140, 640 130, 710 120 C 780 110, 850 100, 920 85 L 920 300 L 80 300 Z" 
-                fill="url(#studioMarginGrad)" 
-              />
-
-              {/* Milestone / Strategic Point Highlight (Q3 2024 Inflection) */}
-              <line opacity="0.6" stroke="#64748B" strokeDasharray="3 3" x1="500" x2="500" y1="40" y2="300" />
-              <rect fill="#EFF6FF" height="22" rx="4" width="130" x="435" y="12" stroke="#BFDBFE" />
-              <text className="text-[10px] font-label-sm font-semibold fill-[#1D4ED8]" textAnchor="middle" x="500" y="27">
-                Q3 2024 S/4HANA Go-Live
-              </text>
-
-              {/* Primary Spline: Net Revenue ($M) */}
-              <path 
-                d="M 80 230 C 150 220, 220 200, 290 190 C 360 180, 430 160, 500 135 C 570 110, 640 120, 710 95 C 780 70, 850 80, 920 60" 
-                fill="none" 
-                stroke="#2563EB" 
-                strokeWidth="2.5" 
-              />
-
-              {/* Secondary Spline: Gross Margin % */}
-              <path 
-                d="M 80 200 C 150 195, 220 185, 290 175 C 360 165, 430 150, 500 145 C 570 140, 640 130, 710 120 C 780 110, 850 100, 920 85" 
-                fill="none" 
-                stroke="#0D9488" 
-                strokeDasharray="6 3" 
-                strokeWidth="2" 
-              />
-
-              {/* Points for Net Revenue Line */}
-              <circle cx="80" cy="230" fill="#FFFFFF" r="4" stroke="#2563EB" strokeWidth="2" />
-              <circle cx="220" cy="200" fill="#FFFFFF" r="4" stroke="#2563EB" strokeWidth="2" />
-              <circle cx="360" cy="180" fill="#FFFFFF" r="4" stroke="#2563EB" strokeWidth="2" />
-              <circle cx="500" cy="135" fill="#2563EB" r="5" stroke="#FFFFFF" strokeWidth="2" />
-              <circle cx="640" cy="120" fill="#FFFFFF" r="4" stroke="#2563EB" strokeWidth="2" />
-              <circle cx="780" cy="70" fill="#FFFFFF" r="4" stroke="#2563EB" strokeWidth="2" />
-              <circle cx="920" cy="60" fill="#2563EB" r="5" stroke="#FFFFFF" strokeWidth="2" />
-
-              {/* Points for Gross Margin Line */}
-              <circle cx="80" cy="200" fill="#0D9488" r="3.5" />
-              <circle cx="220" cy="185" fill="#0D9488" r="3.5" />
-              <circle cx="360" cy="165" fill="#0D9488" r="3.5" />
-              <circle cx="500" cy="145" fill="#0D9488" r="4.5" stroke="#FFFFFF" strokeWidth="1.5" />
-              <circle cx="640" cy="130" fill="#0D9488" r="3.5" />
-              <circle cx="780" cy="110" fill="#0D9488" r="3.5" />
-              <circle cx="920" cy="85" fill="#0D9488" r="4.5" stroke="#FFFFFF" strokeWidth="1.5" />
-
-              {/* Tooltip Simulation on Q3 2024 Point */}
-              <g transform="translate(510, 100)">
-                <rect fill="#0F172A" height="48" opacity="0.95" rx="6" width="145" />
-                <text className="text-[10px] font-label-sm" fill="#FFFFFF" x="10" y="18">Aug 2024 • $38.4M</text>
-                <text className="text-[10px] font-label-sm font-semibold" fill="#93C5FD" x="10" y="36">Margin: 42.1% (↑ 340bps)</text>
-              </g>
-
-              {/* X-Axis Labels (Time Dimension) */}
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="80" y="325">Jan 24</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="150" y="325">Mar 24</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="220" y="325">May 24</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="290" y="325">Jul 24</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="360" y="325">Sep 24</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="430" y="325">Nov 24</text>
-              <text className="text-[11px] font-label-md fill-[#0F172A] font-semibold" textAnchor="middle" x="500" y="325">Jan 25</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="570" y="325">Mar 25</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="640" y="325">May 25</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="710" y="325">Jul 25</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="780" y="325">Sep 25</text>
-              <text className="text-[11px] font-label-md fill-[#64748B]" textAnchor="middle" x="850" y="325">Nov 25</text>
-              <text className="text-[11px] font-label-md fill-[#0F172A] font-semibold" textAnchor="middle" x="920" y="325">Dec 25 (Proj)</text>
-            </svg>
-          </div>
-        </div>
         )}
 
-        {/* AI Summary & Key Insights Panel */}
-        <div className="mt-8 pt-6 border-t border-[#E2E8F0]">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="material-symbols-outlined text-[18px] text-[#7C3AED]">insights</span>
-            <h3 className="font-headline-sm text-headline-sm text-[#0F172A] font-semibold">
-              Synthesized Executive Insights
+        {/* When no graph generated yet and not generating: Clean empty state, mock graph removed */}
+        {!isGenerating && !generatedImage && (
+          <div className="w-full py-16 px-6 bg-slate-50/60 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
+            <div className="w-14 h-14 rounded-2xl bg-violet-50 border border-violet-100 flex items-center justify-center text-[#7C3AED] mb-4 shadow-2xs">
+              <span className="material-symbols-outlined text-[32px]">query_stats</span>
+            </div>
+            <h3 className="font-headline-sm text-headline-sm text-[#0F172A] font-semibold mb-1">
+              No Graph Generated Yet
             </h3>
-            <span className="px-2 py-0.5 rounded-full bg-[#F5F3FF] font-label-sm text-label-sm text-[#6D28D9] border border-[#DDD6FE]">
-              Validated against HANA In-Memory Stats
-            </span>
+            <p className="font-body-sm text-body-sm text-[#64748B] max-w-lg mb-6">
+              Enter a custom business question or select an instant graph blueprint above, then click <strong className="text-[#7C3AED]">Generate Visualization</strong> to execute Python scripts against live SAP HANA data.
+            </p>
+            <button
+              onClick={handleGenerate}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-label-md text-label-md shadow-xs transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">bolt</span>
+              <span>Generate Visualization Now</span>
+            </button>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Insight Card 1 */}
-            <div className="bg-[#F8FAFC] p-4 rounded-xl border border-[#E2E8F0]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-label-sm text-label-sm uppercase tracking-wider text-[#64748B] font-semibold">
-                  Structural Pivot
-                </span>
-                <span className="material-symbols-outlined text-[16px] text-[#2563EB]">trending_up</span>
-              </div>
-              <div className="font-headline-sm text-headline-sm text-[#0F172A] font-semibold mb-1">
-                Q3 2024 Inflection Point
-              </div>
-              <p className="font-body-sm text-body-sm text-[#475569]">
-                Net revenue trajectory accelerated from an average $24.8M monthly baseline to $38.4M following unified enterprise discounting controls in SAP BTP.
-              </p>
-            </div>
-
-            {/* Insight Card 2 */}
-            <div className="bg-[#F8FAFC] p-4 rounded-xl border border-[#E2E8F0]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-label-sm text-label-sm uppercase tracking-wider text-[#64748B] font-semibold">
-                  Category Resilience
-                </span>
-                <span className="material-symbols-outlined text-[16px] text-[#0D9488]">shield</span>
-              </div>
-              <div className="font-headline-sm text-headline-sm text-[#0F172A] font-semibold mb-1">
-                Margin Resilience in Machinery
-              </div>
-              <p className="font-body-sm text-body-sm text-[#475569]">
-                Heavy Machinery gross margin expanded by 340 bps even as volume scaled, confirming pricing power resilience against supply chain volatility.
-              </p>
-            </div>
-
-            {/* Insight Card 3 */}
-            <div className="bg-[#F8FAFC] p-4 rounded-xl border border-[#E2E8F0]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-label-sm text-label-sm uppercase tracking-wider text-[#64748B] font-semibold">
-                  Predictive Forecast
-                </span>
-                <span className="material-symbols-outlined text-[16px] text-[#7C3AED]">psychology</span>
-              </div>
-              <div className="font-headline-sm text-headline-sm text-[#0F172A] font-semibold mb-1">
-                Projected Q4 Trajectory
-              </div>
-              <p className="font-body-sm text-body-sm text-[#475569]">
-                Autoregressive vector estimation projects fiscal year-end net run-rate reaching $54.2M, with margin stabilized in the 43.5% ± 0.8% corridor.
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Schema Quick Drawer & Visual Operational Metadata */}
@@ -797,7 +686,7 @@ print("Chart generated successfully.")
         {/* Schema Columns Pills Cluster */}
         <div className="flex flex-wrap gap-2">
           {SCHEMA_COLUMNS.slice(0, 12).map((col) => (
-            <button 
+            <button
               key={col.name}
               onClick={() => handleAppendColumn(col.name)}
               className="schema-pill px-3 py-1.5 rounded-full bg-white hover:bg-[#F1F5F9] text-[#0F172A] font-label-md text-label-md flex items-center gap-1.5 shadow-2xs border border-[#CBD5E1] transition-all hover:scale-105 active:scale-95"
@@ -817,9 +706,9 @@ print("Chart generated successfully.")
       {/* Full Schema Modal */}
       {schemaModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
-          <div 
-            className="fixed inset-0" 
-            onClick={() => setSchemaModalOpen(false)} 
+          <div
+            className="fixed inset-0"
+            onClick={() => setSchemaModalOpen(false)}
           />
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 max-h-[85vh] flex flex-col z-10 border border-[#CBD5E1]">
             <div className="flex items-center justify-between pb-4 border-b border-[#E2E8F0]">
@@ -831,7 +720,7 @@ print("Chart generated successfully.")
                   Active schema mapping for SAP HANA Enterprise calculation view
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => setSchemaModalOpen(false)}
                 className="w-8 h-8 rounded-full bg-[#F1F5F9] hover:bg-[#E2E8F0] flex items-center justify-center text-[#0F172A] transition-colors"
               >
@@ -840,18 +729,18 @@ print("Chart generated successfully.")
             </div>
 
             <div className="py-3">
-              <input 
+              <input
                 value={schemaFilter}
                 onChange={(e) => setSchemaFilter(e.target.value)}
-                className="w-full h-10 px-4 rounded-xl bg-[#F8FAFC] text-[#0F172A] placeholder:text-[#64748B] font-body-sm text-body-sm border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB] focus:bg-white transition-colors" 
-                placeholder="Filter 39 schema columns..." 
+                className="w-full h-10 px-4 rounded-xl bg-[#F8FAFC] text-[#0F172A] placeholder:text-[#64748B] font-body-sm text-body-sm border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB] focus:bg-white transition-colors"
+                placeholder="Filter 39 schema columns..."
                 type="text"
               />
             </div>
 
             <div className="overflow-y-auto flex-1 my-2 pr-1 space-y-2">
               {filteredSchema.map((col) => (
-                <div 
+                <div
                   key={col.name}
                   onClick={() => {
                     handleAppendColumn(col.name);
@@ -877,7 +766,7 @@ print("Chart generated successfully.")
 
             <div className="pt-4 border-t border-[#E2E8F0] flex justify-between items-center">
               <span className="font-label-sm text-[#64748B]">Click any column to append to query</span>
-              <button 
+              <button
                 onClick={() => setSchemaModalOpen(false)}
                 className="px-5 py-2 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-label-md text-label-md shadow-xs transition-colors"
               >
@@ -891,9 +780,9 @@ print("Chart generated successfully.")
       {/* History Modal */}
       {historyModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
-          <div 
-            className="fixed inset-0" 
-            onClick={() => setHistoryModalOpen(false)} 
+          <div
+            className="fixed inset-0"
+            onClick={() => setHistoryModalOpen(false)}
           />
           <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 max-h-[80vh] flex flex-col z-10 border border-[#CBD5E1]">
             <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
@@ -901,7 +790,7 @@ print("Chart generated successfully.")
                 <span className="material-symbols-outlined text-[20px] text-[#2563EB]">history</span>
                 <h3 className="font-headline-sm text-headline-sm text-[#0F172A] font-semibold">Graph Generation History</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setHistoryModalOpen(false)}
                 className="w-8 h-8 rounded-full bg-[#F1F5F9] hover:bg-[#E2E8F0] flex items-center justify-center text-[#0F172A]"
               >
@@ -911,7 +800,7 @@ print("Chart generated successfully.")
 
             <div className="overflow-y-auto flex-1 my-3 space-y-2">
               {queryHistory.map((item, idx) => (
-                <div 
+                <div
                   key={idx}
                   onClick={() => {
                     setPrompt(item.query);
@@ -932,7 +821,7 @@ print("Chart generated successfully.")
             </div>
 
             <div className="pt-3 border-t border-[#E2E8F0] flex justify-end">
-              <button 
+              <button
                 onClick={() => setHistoryModalOpen(false)}
                 className="px-4 py-1.5 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium"
               >
@@ -946,9 +835,9 @@ print("Chart generated successfully.")
       {/* Studio Config Modal */}
       {configModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
-          <div 
-            className="fixed inset-0" 
-            onClick={() => setConfigModalOpen(false)} 
+          <div
+            className="fixed inset-0"
+            onClick={() => setConfigModalOpen(false)}
           />
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-10 border border-[#CBD5E1]">
             <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
@@ -956,7 +845,7 @@ print("Chart generated successfully.")
                 <span className="material-symbols-outlined text-[20px] text-[#2563EB]">tune</span>
                 <h3 className="font-headline-sm text-headline-sm text-[#0F172A] font-semibold">Studio Configuration</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setConfigModalOpen(false)}
                 className="w-8 h-8 rounded-full bg-[#F1F5F9] hover:bg-[#E2E8F0] flex items-center justify-center text-[#0F172A]"
               >
@@ -967,10 +856,10 @@ print("Chart generated successfully.")
             <div className="py-4 space-y-4 text-body-sm">
               <div>
                 <label className="font-label-sm uppercase text-[#64748B] block mb-1">HANA Connection Timeout</label>
-                <input 
-                  type="text" 
-                  defaultValue="15,000 ms" 
-                  className="w-full px-3 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-[#0F172A]" 
+                <input
+                  type="text"
+                  defaultValue="15,000 ms"
+                  className="w-full px-3 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-[#0F172A]"
                 />
               </div>
               <div>
@@ -982,22 +871,22 @@ print("Chart generated successfully.")
               </div>
               <div>
                 <label className="font-label-sm uppercase text-[#64748B] block mb-1">Vector Re-ranking Depth</label>
-                <input 
-                  type="text" 
-                  defaultValue="Top 50 partitions" 
-                  className="w-full px-3 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-[#0F172A]" 
+                <input
+                  type="text"
+                  defaultValue="Top 50 partitions"
+                  className="w-full px-3 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-[#0F172A]"
                 />
               </div>
             </div>
 
             <div className="pt-3 border-t border-[#E2E8F0] flex justify-end gap-2">
-              <button 
+              <button
                 onClick={() => setConfigModalOpen(false)}
                 className="px-4 py-1.5 rounded-full bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#475569] text-xs font-medium"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={() => {
                   setConfigModalOpen(false);
                   showToast('Config updated');
@@ -1014,9 +903,9 @@ print("Chart generated successfully.")
       {/* Expanded High-Res View Modal */}
       {expandedViewOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in">
-          <div 
-            className="fixed inset-0" 
-            onClick={() => setExpandedViewOpen(false)} 
+          <div
+            className="fixed inset-0"
+            onClick={() => setExpandedViewOpen(false)}
           />
           <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full p-8 z-10 max-h-[90vh] overflow-y-auto border border-[#CBD5E1]">
             <div className="flex items-center justify-between pb-4 border-b border-[#E2E8F0] mb-4">
@@ -1025,10 +914,10 @@ print("Chart generated successfully.")
                   High-Resolution Analytical Render
                 </h3>
                 <p className="font-body-sm text-[#64748B]">
-                  SAP HANA Analytical View • Dual-Axis Spline Trendline
+                  SAP HANA Analytical View • {generatedChartType || 'Custom Python Matplotlib Visualization'}
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => setExpandedViewOpen(false)}
                 className="w-9 h-9 rounded-full bg-[#F1F5F9] hover:bg-[#E2E8F0] flex items-center justify-center text-[#0F172A]"
               >
@@ -1036,34 +925,32 @@ print("Chart generated successfully.")
               </button>
             </div>
 
-            {/* Large SVG */}
-            <div className="w-full py-4">
-              <svg 
-                className="w-full h-auto text-on-surface" 
-                viewBox="0 0 1000 380" 
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <line stroke="#E2E8F0" strokeDasharray="4 4" x1="60" x2="940" y1="40" y2="40" />
-                <line stroke="#E2E8F0" strokeDasharray="4 4" x1="60" x2="940" y1="105" y2="105" />
-                <line stroke="#E2E8F0" strokeDasharray="4 4" x1="60" x2="940" y1="170" y2="170" />
-                <line stroke="#E2E8F0" strokeDasharray="4 4" x1="60" x2="940" y1="235" y2="235" />
-                <line stroke="#CBD5E1" x1="60" x2="940" y1="300" y2="300" />
-                
-                <path d="M 80 230 C 150 220, 220 200, 290 190 C 360 180, 430 160, 500 135 C 570 110, 640 120, 710 95 C 780 70, 850 80, 920 60 L 920 300 L 80 300 Z" fill="#2563EB" fillOpacity="0.12" />
-                <path d="M 80 200 C 150 195, 220 185, 290 175 C 360 165, 430 150, 500 145 C 570 140, 640 130, 710 120 C 780 110, 850 100, 920 85 L 920 300 L 80 300 Z" fill="#0D9488" fillOpacity="0.12" />
-                
-                <path d="M 80 230 C 150 220, 220 200, 290 190 C 360 180, 430 160, 500 135 C 570 110, 640 120, 710 95 C 780 70, 850 80, 920 60" fill="none" stroke="#2563EB" strokeWidth="3" />
-                <path d="M 80 200 C 150 195, 220 185, 290 175 C 360 165, 430 150, 500 145 C 570 140, 640 130, 710 120 C 780 110, 850 100, 920 85" fill="none" stroke="#0D9488" strokeDasharray="6 3" strokeWidth="2.5" />
-              </svg>
+            {/* Large High-Res Render with actual generated image */}
+            <div className="w-full py-4 flex items-center justify-center bg-slate-50/60 rounded-2xl border border-[#E2E8F0] p-4 min-h-[360px]">
+              {generatedImage ? (
+                <img
+                  src={generatedImage}
+                  alt="High-resolution generated visualization"
+                  className="max-w-full h-auto rounded-xl shadow-lg border border-[#CBD5E1]"
+                />
+              ) : (
+                <div className="text-center py-12 text-[#64748B]">
+                  <span className="material-symbols-outlined text-[48px] text-slate-300 mb-2">image</span>
+                  <p className="text-sm font-medium">No generated visualization available to display</p>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-between items-center pt-4 border-t border-[#E2E8F0]">
-              <span className="font-label-sm text-[#64748B]">Resolution: 3000 x 1140 Native Vector</span>
-              <button 
-                onClick={downloadSVG}
-                className="px-6 py-2 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-label-md text-label-md"
+              <span className="font-label-sm text-[#64748B]">
+                {recordsMatched !== null ? `Records matched: ${recordsMatched.toLocaleString()} · Verified HANA Column-Store` : 'Native High-Resolution Render'}
+              </span>
+              <button
+                onClick={handleDownload}
+                className="px-6 py-2 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-label-md text-label-md shadow-xs transition-colors flex items-center gap-2"
               >
-                Download Vector File
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                <span>Download Generated Image</span>
               </button>
             </div>
           </div>
