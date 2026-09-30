@@ -7,6 +7,7 @@ import {
   fetchSessionMessages,
   deleteChatSession
 } from '../services/chatbotService';
+import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
 interface RAGChatProps {
   onNavigate: (path: string) => void;
@@ -629,14 +630,29 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
       const lower = query.toLowerCase();
 
       if (lower.includes('margin') || lower.includes('profit') || lower.includes('gross')) {
-        responseText = `Retrieved in-memory partitions from SAP HANA Sales & Margin Fact table. Robotics Automation leads overall profitability at 48.2% gross margin, followed by Material Handling at 41.4%. We observe moderate pressure in Heavy Machinery (-180 bps) related to international freight and raw materials surcharges.`;
+        responseText = `### Executive Summary: Gross Margin Analysis (FY2024)
+
+Retrieved in-memory partitions from **SAP HANA Sales & Margin Fact** (\`SAP_HANA_SALES_FACT\`).
+
+| Product Category | Net Revenue | Gross Margin | Margin Trend |
+| :--- | :---: | :---: | :---: |
+| **Robotics Automation** | $48.9M | **48.2%** | ▲ +3.1% YoY |
+| **Material Handling & Storage** | $58.2M | **42.1%** | ▲ +1.4% YoY |
+| **Safety & Compliance** | $24.2M | **38.6%** | ▬ Stable |
+| **Heavy Machinery** | $36.7M | **34.2%** | ▼ -1.8% YoY |
+
+> **Strategic Finding:** Robotics Automation commands the highest unit profitability across European nodes, driven by auxiliary firmware attachment rates (**62.4%**). Heavy Machinery experienced margin compression due to raw titanium surcharges in Q2.
+
+#### Actionable Recommendations:
+1. **Hedging Strategy:** Secure forward contracts on German industrial steel lots to mitigate Heavy Machinery spot variance.
+2. **Quota Rebalancing:** Reallocate 4.5% of regional sales capacity toward automated assembly systems to optimize blended margin.`;
         chartData = {
           title: 'Gross Margin by Product Category (FY2024 Actuals)',
           unit: 'Margin %',
           items: [
             { label: 'Robotics Automation', value: 48.2, displayValue: '48.2%' },
-            { label: 'Material Handling', value: 41.4, displayValue: '41.4%' },
-            { label: 'Industrial Safety', value: 39.8, displayValue: '39.8%' },
+            { label: 'Material Handling', value: 42.1, displayValue: '42.1%' },
+            { label: 'Safety & Compliance', value: 38.6, displayValue: '38.6%' },
             { label: 'Heavy Machinery', value: 34.2, displayValue: '34.2%' },
           ],
         };
@@ -649,13 +665,63 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
             id: 'doc-m1',
             source: 'SAP_HANA_SALES_FACT (Table Partition FY24)',
             tableOrCollection: 'SAP_HANA_SALES_FACT',
-            snippet: 'Aggregate margin records: Robotics Automation revenue $68.4M with 48.2% gross margin.',
+            snippet: 'Aggregate margin records: Robotics Automation revenue $48.92M with 48.2% gross margin. Firmware attachment 62.4%.',
             relevanceScore: 0.964,
             timestamp: 'Partition: FY2024_Q3',
           },
         ];
+      } else if (lower.includes('order') || lower.includes('so-') || lower.includes('fulfillment') || lower.includes('so106760') || lower.includes('106760')) {
+        responseText = `### Sales Order Fulfillment Record: SO-106760
+
+Verified against **SAP S/4HANA Sales & Distribution** (\`SAP_S4HANA_SD_ORDERS\`).
+
+| Line Item | Description | Quantity | Net Amount | Realized Margin |
+| :---: | :--- | :---: | :---: | :---: |
+| **10** | Industrial Robotic Arm X-400 | 4 | **$240,000.00** | 46.2% |
+| **20** | Firmware Enterprise Pack | 4 | **$14,500.00** | 92.0% |
+| **30** | Proximity Sensors Matrix | 15 | **$9,800.00** | 38.5% |
+
+- **Customer:** Global Logistics Automation AG
+- **Shipping Carrier:** DB Schenker (Tracking: \`SHP-99412-EUR\`)
+- **Status:** **Shipped & In Transit** (Delivery scheduled: *Tomorrow 14:00 CET*)
+
+\`\`\`sql
+-- Line-item verification query
+SELECT "ItemNumber", "MaterialCode", "NetValueUSD", "FulfillmentStatus"
+FROM "SAP_S4HANA"."VBAP"
+WHERE "SalesOrder" = 'SO-106760';
+\`\`\``;
+        retrievedDocs = [
+          {
+            id: 'doc-o1',
+            source: 'SAP_S4HANA_SD_ORDERS',
+            tableOrCollection: 'V_SALES_ORDERS',
+            snippet: 'SO-106760: Total $264,300.00. 3 line items fulfilled. Carrier DB Schenker.',
+            relevanceScore: 0.982,
+            timestamp: 'Order Sync: Real-time',
+          },
+        ];
       } else {
-        responseText = `Grounded query against 3,248 HANA vector embeddings. Net Revenue run-rate is pacing at $184.2M with average profit margin of 42.6%. The ledger reveals consistent outperformance in high-margin automated robotics and sensors, with enterprise fulfillment efficiency at 96.4%.`;
+        responseText = `### Conversational Analytics Report
+
+Grounded against **3,248 SAP HANA Vector Embeddings** (\`SAP_HANA_VECTOR_DB\`).
+
+- **Total Net Revenue:** $184.2M *(+14.8% YoY pace)*
+- **Blended Gross Margin:** **42.6%** *(Exceeds FY24 target of 40.0%)*
+- **Order On-Time Fulfillment:** 96.4% across EMEA & APAC distribution hubs
+
+\`\`\`sql
+-- Analytical grounding query executed on SAP HANA Column Store
+SELECT 
+    "Category",
+    ROUND(SUM("NetRevenueUSD") / 1e6, 2) AS "Revenue_Millions",
+    ROUND(AVG("GrossMarginPct") * 100, 1) AS "Margin_Pct"
+FROM "NEOVATIC_DB"."SALES_FACT"
+GROUP BY "Category"
+ORDER BY "Revenue_Millions" DESC;
+\`\`\`
+
+All metrics are reconciled against the continuous in-memory vector ledger.`;
         retrievedDocs = [
           {
             id: 'doc-g1',
@@ -752,41 +818,6 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
   );
 
   const groups: ('Today' | 'Yesterday' | 'Previous 7 Days' | 'Older')[] = ['Today', 'Yesterday', 'Previous 7 Days', 'Older'];
-
-  // Helper to format assistant message content cleanly (handling code blocks & linebreaks)
-  const renderFormattedText = (text: string) => {
-    if (text.includes('```')) {
-      const parts = text.split(/(```[\s\S]*?```)/g);
-      return parts.map((part, i) => {
-        if (part.startsWith('```') && part.endsWith('```')) {
-          const lines = part.slice(3, -3).trim().split('\n');
-          const lang = lines[0].match(/^[a-zA-Z0-9_-]+$/) ? lines[0] : '';
-          const code = (lang ? lines.slice(1) : lines).join('\n');
-          return (
-            <div key={i} className="my-2 rounded-xl bg-[#0F172A] text-slate-100 p-3.5 font-mono text-xs overflow-x-auto relative group shadow-sm border border-slate-700/60">
-              <div className="flex items-center justify-between text-[10px] text-slate-400 pb-1.5 mb-2 border-b border-slate-700/80">
-                <span className="uppercase tracking-wider font-semibold text-violet-400">{lang || 'SQL Query'}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard?.writeText(code);
-                    showToast('Snippet copied to clipboard');
-                  }}
-                  className="hover:text-white flex items-center gap-1 transition-colors text-slate-300"
-                >
-                  <span className="material-symbols-outlined text-[13px]">content_copy</span>
-                  <span>Copy</span>
-                </button>
-              </div>
-              <pre className="whitespace-pre-wrap leading-relaxed text-slate-200">{code}</pre>
-            </div>
-          );
-        }
-        return <p key={i} className="whitespace-pre-line leading-relaxed font-body-md text-[#0F172A]">{part}</p>;
-      });
-    }
-    return <p className="whitespace-pre-line leading-relaxed font-body-md text-[#0F172A]">{text}</p>;
-  };
 
   return (
     <div className="flex w-full h-full overflow-hidden rounded-2xl bg-white border border-[#E2E8F0] shadow-sm relative select-auto">
@@ -974,8 +1005,8 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                         <div
                           key={thread.id}
                           className={`group relative flex items-center justify-between rounded-xl px-2.5 py-2 transition-all cursor-pointer ${isActive
-                              ? 'bg-white border border-[#CBD5E1] shadow-xs text-[#0F172A]'
-                              : 'hover:bg-white text-[#475569] border border-transparent'
+                            ? 'bg-white border border-[#CBD5E1] shadow-xs text-[#0F172A]'
+                            : 'hover:bg-white text-[#475569] border border-transparent'
                             }`}
                           onClick={() => handleSelectThread(thread.id)}
                         >
@@ -1117,8 +1148,8 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
                 <h2
                   title={activeThread?.title || 'Conversational Analytics'}
                   className={`font-headline-sm text-xs sm:text-sm text-[#0F172A] font-semibold truncate block leading-tight min-w-0 ${!sidebarCollapsed
-                      ? 'max-w-[110px] xs:max-w-[150px] sm:max-w-[200px] md:max-w-[240px] lg:max-w-[280px]'
-                      : 'max-w-xs sm:max-w-md'
+                    ? 'max-w-[110px] xs:max-w-[150px] sm:max-w-[200px] md:max-w-[240px] lg:max-w-[280px]'
+                    : 'max-w-xs sm:max-w-md'
                     }`}
                 >
                   {activeThread?.title || 'Conversational Analytics'}
@@ -1312,8 +1343,13 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
 
                     {/* Assistant Response Content Card */}
                     <div className="bg-white border border-[#E2E8F0] rounded-2xl rounded-tl-xs p-4 sm:p-5 text-[#0F172A] text-sm leading-relaxed shadow-xs space-y-4">
-                      {/* Render text with code block parsing */}
-                      {msg.text && renderFormattedText(msg.text)}
+                      {/* Render text with Markdown formatting (tables, headers, code blocks, lists, quotes) */}
+                      {msg.text && (
+                        <MarkdownRenderer
+                          content={msg.text}
+                          onCodeCopy={() => showToast('Snippet copied to clipboard')}
+                        />
+                      )}
 
                       {/* Inline Analytical Chart Visualization (if present) */}
                       {msg.chartData && (
