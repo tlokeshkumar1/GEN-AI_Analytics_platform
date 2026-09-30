@@ -108,7 +108,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
   const [expandedDocMessageId, setExpandedDocMessageId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -540,7 +540,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
     setMobileDrawerOpen(false);
     setInputText('');
     showToast('Created new conversation');
-    setTimeout(() => textareaRef.current?.focus(), 80);
+    setTimeout(() => inputRef.current?.focus(), 80);
   };
 
   const handleDeleteThreadConfirmed = async () => {
@@ -976,7 +976,7 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
 
   const handleSuggestedPrompt = (promptText: string) => {
     setInputText(promptText);
-    textareaRef.current?.focus();
+    inputRef.current?.focus();
   };
 
   const handleExportMarkdown = (thread: ChatThread) => {
@@ -1850,55 +1850,41 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
         </div>
 
         {/* ============================================================ */}
-        {/* CHAT INPUT AREA: Sticky / Docked at Bottom of Chat Panel */}
+        {/* CHAT INPUT AREA: Compact bar with text box beside Enter to send & arrow */}
         {/* ============================================================ */}
-        <div className="p-3 sm:p-4 bg-white border-t border-[#E2E8F0] shrink-0 z-10">
-          <div className="max-w-4xl mx-auto rounded-2xl bg-[#F8FAFC] border border-[#CBD5E1] focus-within:border-[#7C3AED] focus-within:ring-2 focus-within:ring-[#7C3AED]/20 focus-within:bg-white transition-all p-2.5 sm:p-3 space-y-2">
-            {/* Multiline Textarea */}
-            <textarea
-              ref={textareaRef}
+        <div className="p-3 sm:px-6 bg-white border-t border-[#E2E8F0] shrink-0 z-10">
+          <div className="max-w-4xl mx-auto flex items-center gap-2 sm:gap-3 bg-[#F8FAFC] border border-[#CBD5E1] rounded-xl px-3.5 py-1.5 focus-within:border-[#7C3AED] focus-within:ring-2 focus-within:ring-[#7C3AED]/20 focus-within:bg-white transition-all shadow-2xs">
+            {/* Text input directly beside enter to send and arrow button */}
+            <input
+              ref={inputRef}
+              type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === 'Enter') {
                   e.preventDefault();
                   handleSendMessage();
                 }
               }}
               placeholder="Ask about sales, gross margins, SKU variances, or request a custom chart..."
-              rows={2}
-              className="w-full bg-transparent resize-none text-sm text-[#0F172A] placeholder:text-[#64748B] focus:outline-none leading-relaxed max-h-36 overflow-y-auto"
+              className="flex-1 min-w-0 bg-transparent text-sm text-[#0F172A] placeholder:text-[#64748B] focus:outline-none py-1"
             />
 
-            {/* Input Toolbar */}
-            <div className="flex items-center justify-between pt-1.5 border-t border-[#E2E8F0] gap-2">
-              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B] select-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]"></span>
-                <span>SAP HANA In-Memory RAG</span>
-              </div>
+            {/* Enter to send hint */}
+            <span className="hidden sm:inline text-[11px] text-[#64748B] font-mono select-none shrink-0 whitespace-nowrap">
+              Enter ↵ to send
+            </span>
 
-              {/* Right: Send Button & Keyboard indicator */}
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="hidden sm:inline text-[11px] text-[#64748B] font-mono select-none">
-                  Enter ↵ to send
-                </span>
-
-                <button
-                  type="button"
-                  onClick={handleSendMessage}
-                  disabled={isSubmitting || !inputText.trim()}
-                  aria-label="Send message"
-                  className="w-8 h-8 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] disabled:bg-[#E2E8F0] disabled:text-[#94A3B8] text-white flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
-                >
-                  <span className="material-symbols-outlined text-[17px]">arrow_upward</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Quiet disclaimer */}
-          <div className="text-center mt-2 text-[10px] text-[#64748B]">
-            Grounded in SAP HANA in-memory columnar vector store · AI results should be verified with official general ledgers
+            {/* Send button with arrow */}
+            <button
+              type="button"
+              onClick={handleSendMessage}
+              disabled={isSubmitting || !inputText.trim()}
+              aria-label="Send message"
+              className="w-8 h-8 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] disabled:bg-[#E2E8F0] disabled:text-[#94A3B8] text-white flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0 shadow-xs cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[17px]">arrow_upward</span>
+            </button>
           </div>
         </div>
       </div>
