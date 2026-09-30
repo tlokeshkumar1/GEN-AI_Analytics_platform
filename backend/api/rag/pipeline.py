@@ -45,6 +45,15 @@ class RAGPipeline:
         except Exception as e:
             logger.warning(f"[PIPELINE] Failed to emit event for {stage}/{status}: {e}")
 
+    def _emit_token(self, callback: Optional[Callable], content: str) -> None:
+        """Emit a token event for progressive LLM streaming."""
+        if callback is None or not content:
+            return
+        try:
+            callback({"type": "token", "content": content})
+        except Exception as e:
+            logger.warning(f"[PIPELINE] Failed to emit token event: {e}")
+
     # ── Order ID helpers (preserved from original) ────────────────────────────
 
     def _is_order_id_query(self, query: str) -> str:
@@ -243,6 +252,101 @@ class RAGPipeline:
                 "session_id": "default",
             }
 
+    # ── Streaming Pipeline (Token-by-Token via SSE) ───────────────────────────
+
+    def run_stream(self, user_message: str, top_k: int = 15,
+                   event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+                   chat_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+        """
+        Streaming variant of run(). Identical pipeline stages but uses
+        generator.generate_stream() during LLM generation to emit token events
+        for progressive rendering via SSE.
+
+        Returns the same result dict as run() for history persistence.
+        """
+        ctx = RequestContext()
+        processing_steps = []
+        cb = event_callback
+        self._chat_history = chat_history or []
+
+        try:
+            # ── Stage 1: Check for Order ID lookup ────────────────────────────
+            order_id = self._is_order_id_query(user_message)
+            if order_id and self._is_pure_order_lookup(user_message):
+                self._emit(cb, "intent", "running", "Analyzing prompt intent...")
+                self._emit(cb, "intent", "completed", "Detected order lookup request.")
+                self._emit(cb, "retrieval", "running", f"Retrieving order {order_id}...")
+                exact_data = self._get_exact_order_data(order_id)
+                if exact_data:
+                    self._emit(cb, "retrieval", "completed", f"Retrieved order {order_id} from source data.")
+                    exact_data["processing"] = [
+                        {"stage": "intent", "status": "completed", "message": "Detected order lookup request."},
+                        {"stage": "retrieval", "status": "completed", "message": f"Retrieved order {order_id} from source data."},
+                    ]
+                    exact_data["type"] = "analytical"
+                    exact_data["status"] = "success"
+                    exact_data["records_matched"] = 1
+                    ctx.intent = "exact_order"
+                    ctx.records_matched = 1
+                    ctx.finalize("success")
+                    return exact_data
+
+            # ── Stage 2: Intent Detection ─────────────────────────────────────
+            self._emit(cb, "intent", "running", "Analyzing prompt intent...")
+            step = {"stage": "intent", "status": "running", "message": "Analyzing prompt intent..."}
+            processing_steps.append(step)
+
+            t0 = time.time()
+            query_plan = intent_engine.classify(user_message)
+            ctx.intent_time_ms = (time.time() - t0) * 1000
+            ctx.intent = query_plan.get("intent")
+            ctx.metric = query_plan.get("metric")
+            ctx.dimension = query_plan.get("dimension")
+            ctx.filters = query_plan.get("filters", [])
+
+            intent = query_plan.get("intent", "chat")
+            metric = query_plan.get("metric")
+            dimension = query_plan.get("dimension")
+
+            intent_desc = self._describe_intent(query_plan)
+            step["status"] = "completed"
+            step["message"] = intent_desc
+            step["details"] = {
+                "intent": intent,
+                "metric": metric,
+                "dimension": dimension,
+                "chart_type": query_plan.get("chart_type"),
+            }
+            self._emit(cb, "intent", "completed", intent_desc, details=step["details"])
+
+            # ── Stage 3: Route by intent ──────────────────────────────────────
+
+            if intent == "graph":
+                # Graph generation uses SAP AI Core (non-streaming REST)
+                return self._handle_graph(user_message, query_plan, processing_steps, ctx, top_k, cb)
+
+            elif intent in ("analytical", "ranking", "comparison"):
+                return self._handle_analytical_stream(user_message, query_plan, processing_steps, ctx, top_k, cb)
+
+            else:
+                return self._handle_chat_stream(user_message, query_plan, processing_steps, ctx, top_k, order_id, cb)
+
+        except Exception as e:
+            logger.error(f"[Pipeline] Stream error: {e}")
+            ctx.error = str(e)
+            ctx.finalize("error")
+            return {
+                "reply": "I encountered an error processing your request. Please try rephrasing your question.",
+                "sources": [],
+                "intent": "error",
+                "type": "error",
+                "status": "error",
+                "processing": processing_steps + [
+                    {"stage": "error", "status": "error", "message": "An internal error occurred."}
+                ],
+                "session_id": "default",
+            }
+
     # ── Graph Handler ─────────────────────────────────────────────────────────
 
     def _handle_graph(self, user_message: str, plan: Dict[str, Any],
@@ -427,6 +531,111 @@ class RAGPipeline:
             "session_id": "default",
         }
 
+    # ── Analytical Handler (Streaming) ────────────────────────────────────────
+
+    def _handle_analytical_stream(self, user_message: str, plan: Dict[str, Any],
+                                  steps: List, ctx: RequestContext, top_k: int,
+                                  cb: Optional[Callable] = None) -> Dict[str, Any]:
+        """
+        Streaming variant of _handle_analytical.
+        Uses generate_stream() and emits token events during LLM generation.
+        """
+        metric = plan.get("metric", "NetRevenueUSD")
+        dimension = plan.get("dimension")
+        aggregation = plan.get("aggregation", "SUM")
+
+        # Stage: Schema
+        self._emit(cb, "schema", "running", "Understanding dataset schema...")
+        schema_msg = (f"Metric: {metric} ({aggregation})" +
+                      (f", grouped by {dimension}" if dimension else ""))
+        step_schema = {"stage": "schema", "status": "completed", "message": schema_msg}
+        steps.append(step_schema)
+        self._emit(cb, "schema", "completed", schema_msg)
+
+        # Stage: Filters
+        if plan.get("filters") or plan.get("date_filter"):
+            self._emit(cb, "filter", "running", "Applying filters...")
+            filter_desc = self._describe_filters(plan)
+            steps.append({"stage": "filter", "status": "completed", "message": filter_desc})
+            self._emit(cb, "filter", "completed", filter_desc)
+
+        # Stage: Retrieval & Calculation
+        calc_running_msg = f"Calculating {aggregation}({metric})..."
+        self._emit(cb, "calculation", "running", calc_running_msg)
+        step_calc = {"stage": "calculation", "status": "running", "message": calc_running_msg}
+        steps.append(step_calc)
+
+        t0 = time.time()
+        analytics_result = analytics_engine.execute(plan)
+        ctx.analytics_time_ms = (time.time() - t0) * 1000
+        ctx.records_matched = analytics_result.records_matched
+
+        if not analytics_result.success:
+            step_calc["status"] = "error"
+            step_calc["message"] = analytics_result.error or "Calculation failed."
+            self._emit(cb, "calculation", "failed", step_calc["message"], error=step_calc["message"])
+            ctx.error = analytics_result.error
+            ctx.finalize("error")
+            return {
+                "reply": analytics_result.error or "Unable to calculate the requested data.",
+                "sources": [],
+                "intent": plan["intent"],
+                "type": "error",
+                "status": "error",
+                "processing": steps,
+                "session_id": "default",
+            }
+
+        step_calc["status"] = "completed"
+        step_calc["message"] = f"Calculated from {analytics_result.records_matched:,} matching records."
+        self._emit(cb, "calculation", "completed", step_calc["message"])
+
+        # Stage: Vector Retrieval
+        self._emit(cb, "retrieval", "running", "Searching Vector DB...")
+        step_vec = {"stage": "retrieval", "status": "running", "message": "Searching Vector DB..."}
+        steps.append(step_vec)
+
+        t_vec = time.time()
+        vector_chunks = retriever.retrieve(user_message, top_k)
+        ctx.retrieval_time_ms = (time.time() - t_vec) * 1000
+        step_vec["status"] = "completed"
+        step_vec["message"] = f"Retrieved {len(vector_chunks)} context chunks from Vector DB."
+        self._emit(cb, "retrieval", "completed", step_vec["message"])
+
+        # Stage: LLM explanation (STREAMING)
+        self._emit(cb, "explanation", "running", "Generating answer via NVIDIA NIM...")
+        step_llm = {"stage": "explanation", "status": "running", "message": "Generating answer via NVIDIA NIM..."}
+        steps.append(step_llm)
+
+        t0 = time.time()
+        formatted_prompt = prompt_builder.build_prompt(user_message, vector_chunks, chat_history=self._chat_history)
+
+        # Stream tokens and accumulate full response
+        full_response_parts = []
+        for token in generator.generate_stream(formatted_prompt):
+            full_response_parts.append(token)
+            self._emit_token(cb, token)
+
+        reply = "".join(full_response_parts)
+        ctx.llm_time_ms = (time.time() - t0) * 1000
+        step_llm["status"] = "completed"
+        step_llm["message"] = "Response generated from Vector DB."
+        self._emit(cb, "explanation", "completed", "Answer prepared.")
+
+        ctx.finalize("success")
+        return {
+            "reply": reply,
+            "sources": vector_chunks,
+            "intent": plan["intent"],
+            "type": "analytical",
+            "status": "success",
+            "processing": steps,
+            "data": analytics_result.to_dict(),
+            "query_plan": plan,
+            "records_matched": analytics_result.records_matched,
+            "session_id": "default",
+        }
+
     # ── Chat Handler ──────────────────────────────────────────────────────────
 
     def _handle_chat(self, user_message: str, plan: Dict[str, Any],
@@ -518,6 +727,126 @@ class RAGPipeline:
         t0 = time.time()
         formatted_prompt = prompt_builder.build_prompt(user_message, context_chunks, chat_history=self._chat_history)
         response_text = generator.generate(formatted_prompt)
+        ctx.llm_time_ms = (time.time() - t0) * 1000
+
+        step_llm["status"] = "completed"
+        step_llm["message"] = "Answer prepared."
+        self._emit(cb, "explanation", "completed", "Answer prepared.")
+
+        ctx.finalize("success")
+        return {
+            "reply": response_text,
+            "sources": context_chunks,
+            "intent": plan.get("intent", "rag"),
+            "type": "chat",
+            "status": "success",
+            "processing": steps,
+            "data": analytics_data.to_dict() if analytics_data else None,
+            "query_plan": plan,
+            "records_matched": ctx.records_matched or len(context_chunks),
+            "session_id": "default",
+        }
+
+    # ── Chat Handler (Streaming) ──────────────────────────────────────────────
+
+    def _handle_chat_stream(self, user_message: str, plan: Dict[str, Any],
+                            steps: List, ctx: RequestContext, top_k: int,
+                            order_id: str = None,
+                            cb: Optional[Callable] = None) -> Dict[str, Any]:
+        """
+        Streaming variant of _handle_chat.
+        Uses generate_stream() and emits token events during LLM generation.
+        """
+        context_chunks = []
+        analytics_data = None
+
+        # If plan indicates structured query is also needed
+        if plan.get("requires_structured_query") and plan.get("metric"):
+            self._emit(cb, "calculation", "running", "Retrieving data from source...")
+            step_calc = {"stage": "calculation", "status": "running",
+                        "message": "Retrieving data from source..."}
+            steps.append(step_calc)
+
+            t0 = time.time()
+            analytics_result = analytics_engine.execute(plan)
+            ctx.analytics_time_ms = (time.time() - t0) * 1000
+
+            if analytics_result.success and analytics_result.data:
+                analytics_data = analytics_result
+                ctx.records_matched = analytics_result.records_matched
+                step_calc["status"] = "completed"
+                step_calc["message"] = f"Calculated metadata for {analytics_result.records_matched:,} records."
+                self._emit(cb, "calculation", "completed", step_calc["message"])
+            else:
+                step_calc["status"] = "completed"
+                step_calc["message"] = "No additional metadata needed for this query."
+                self._emit(cb, "calculation", "completed", step_calc["message"])
+
+        # If order_id with analytical context (what-if scenarios)
+        if order_id and not self._is_pure_order_lookup(user_message):
+            order_data = data_service.get_order_details(order_id)
+            if order_data:
+                revenue = float(order_data.get('NetRevenueUSD', 0) or 0)
+                cost = float(order_data.get('TotalCostUSD', order_data.get('CostUSD', 0)) or 0)
+                margin = float(order_data.get('GrossMarginUSD', 0) or 0)
+                margin_pct = float(order_data.get('GrossMarginPercent', 0) or 0)
+                qty = int(order_data.get('Quantity', 1) or 1)
+                unit_price = (revenue / qty) if qty > 0 else 0
+                unit_cost = (cost / qty) if qty > 0 else 0
+                unit_margin = (margin / qty) if qty > 0 else 0
+
+                order_context_chunk = {
+                    "ID": order_id,
+                    "TEXT_CHUNK": (
+                        f"Exact Order Data for {order_id}: "
+                        f"Product Name: {order_data.get('ProductName', 'N/A')}, "
+                        f"Category: {order_data.get('Category', 'N/A')}, SubCategory: {order_data.get('SubCategory', order_data.get('Subcategory', 'N/A'))}, "
+                        f"Customer: {order_data.get('CustomerName', 'N/A')}, Country: {order_data.get('Country', 'N/A')}, "
+                        f"Original Quantity Ordered: {qty} units, "
+                        f"Original Total Net Revenue: ${revenue:,.2f}, "
+                        f"Original Total Cost of Goods: ${cost:,.2f}, "
+                        f"Original Total Gross Margin: ${margin:,.2f}, "
+                        f"Gross Margin %: {margin_pct:.2f}%, "
+                        f"Calculated Unit Selling Price: ${unit_price:,.2f} per unit, "
+                        f"Calculated Unit Cost: ${unit_cost:,.2f} per unit, "
+                        f"Calculated Unit Gross Margin: ${unit_margin:,.2f} per unit."
+                    ),
+                    "SCORE": 1.0,
+                    "METADATA": f'{{"source": "SAC_Sales_Preprocessed", "sheet": "Sheet1", "row_id": "{order_id}"}}'
+                }
+                context_chunks.append(order_context_chunk)
+
+        # Stage: Vector retrieval
+        self._emit(cb, "retrieval", "running", "Searching Vector DB...")
+        step_vec = {"stage": "retrieval", "status": "running",
+                   "message": "Searching Vector DB..."}
+        steps.append(step_vec)
+
+        t0 = time.time()
+        retrieved = retriever.retrieve(user_message, top_k)
+        ctx.retrieval_time_ms = (time.time() - t0) * 1000
+
+        context_chunks.extend(retrieved)
+        step_vec["status"] = "completed"
+        step_vec["message"] = f"Retrieved {len(retrieved)} relevant context chunks from Vector DB."
+        self._emit(cb, "retrieval", "completed", step_vec["message"])
+
+        # Stage: LLM generation (STREAMING)
+        self._emit(cb, "explanation", "running", "Generating answer via NVIDIA NIM...")
+        step_llm = {"stage": "explanation", "status": "running",
+                   "message": "Generating answer via NVIDIA NIM..."}
+        steps.append(step_llm)
+
+        t0 = time.time()
+        formatted_prompt = prompt_builder.build_prompt(user_message, context_chunks, chat_history=self._chat_history)
+
+        # Stream tokens and accumulate full response
+        full_response_parts = []
+        for token in generator.generate_stream(formatted_prompt):
+            full_response_parts.append(token)
+            self._emit_token(cb, token)
+
+        response_text = "".join(full_response_parts)
         ctx.llm_time_ms = (time.time() - t0) * 1000
 
         step_llm["status"] = "completed"

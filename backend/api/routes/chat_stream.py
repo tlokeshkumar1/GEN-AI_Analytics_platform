@@ -11,11 +11,23 @@ logger = get_logger("routes.chat_stream")
 
 router = APIRouter(prefix="/api/chat", tags=["Chatbot Stream"])
 
+# SSE heartbeat interval (seconds) — keeps connection alive through proxies
+HEARTBEAT_INTERVAL = 15.0
+
 
 @router.post("/stream")
 async def chat_stream(req: ChatRequest, request: Request):
     """
     Server-Sent Events (SSE) endpoint for real-time processing feedback & chat responses.
+
+    Event lifecycle:
+        request_started  → Pipeline begins
+        stage            → Intent detection, vector retrieval, calculation, etc.
+        token            → Individual LLM token (progressive rendering)
+        final_answer     → Complete assembled response text
+        result           → Full structured payload (sources, metadata, session_id)
+        request_completed → Pipeline finished
+
     Each pipeline stage emits events as they happen via a thread-safe asyncio.Queue,
     so the frontend receives updates in real time rather than after the pipeline completes.
     Persists both user query and bot response to HANA Cloud.
@@ -61,7 +73,7 @@ async def chat_stream(req: ChatRequest, request: Request):
     chat_history = history_service.get_recent_history(session_id, limit=10)
 
     def stage_callback(event: dict) -> None:
-        """Thread-safe callback invoked by the pipeline for each stage transition."""
+        """Thread-safe callback invoked by the pipeline for each stage transition or token."""
         loop.call_soon_threadsafe(event_queue.put_nowait, event)
 
     async def event_generator():
@@ -70,12 +82,16 @@ async def chat_stream(req: ChatRequest, request: Request):
             # Signal that processing has started
             yield f"data: {json.dumps({'type': 'request_started', 'session_id': session_id})}\n\n"
 
-            # Run the pipeline in a worker thread, passing the callback
+            # Run the STREAMING pipeline in a worker thread, passing the callback
+            # This uses run_stream() which emits both stage AND token events
             pipeline_task = asyncio.ensure_future(
-                asyncio.to_thread(rag_pipeline.run, req.message, req.top_k, stage_callback, chat_history)
+                asyncio.to_thread(rag_pipeline.run_stream, req.message, req.top_k, stage_callback, chat_history)
             )
 
-            # Yield stage events as they arrive from the queue
+            # Track time since last event for heartbeat
+            last_event_time = asyncio.get_event_loop().time()
+
+            # Yield stage/token events as they arrive from the queue
             while True:
                 # Check if client disconnected
                 if await request.is_disconnected():
@@ -88,8 +104,13 @@ async def chat_stream(req: ChatRequest, request: Request):
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
                     yield f"data: {json.dumps(event)}\n\n"
+                    last_event_time = asyncio.get_event_loop().time()
                 except asyncio.TimeoutError:
-                    pass
+                    # Send heartbeat if no events for HEARTBEAT_INTERVAL seconds
+                    now = asyncio.get_event_loop().time()
+                    if (now - last_event_time) >= HEARTBEAT_INTERVAL:
+                        yield ": heartbeat\n\n"
+                        last_event_time = now
 
                 # If the pipeline task is done, drain any remaining events
                 if pipeline_task.done():
@@ -118,7 +139,7 @@ async def chat_stream(req: ChatRequest, request: Request):
             # Inject session_id into result data
             result["session_id"] = session_id
 
-            # Emit final_answer event
+            # Emit final_answer event (complete assembled text)
             final_answer_event = {
                 "type": "final_answer",
                 "content": result.get("reply", ""),

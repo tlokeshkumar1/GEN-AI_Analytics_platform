@@ -44,6 +44,22 @@ export interface ChatMessageRecord {
   TIMESTAMP: string;
 }
 
+export interface GenerateGraphRequest {
+  prompt: string;
+  chart_type?: string;
+  dataset_id?: string;
+  session_id?: string;
+}
+
+export interface GenerateGraphResponse {
+  graph_image?: string;
+  chart_type?: string;
+  insights?: string;
+  title?: string;
+  metrics?: Record<string, any>;
+  data?: Record<string, any>;
+}
+
 // ── Session API Functions ────────────────────────────────────────────────────
 
 export const fetchChatSessions = async (): Promise<ChatSession[]> => {
@@ -60,6 +76,16 @@ export const deleteChatSession = async (sessionId: string): Promise<void> => {
   await api.delete(`/chat/sessions/${sessionId}`);
 };
 
+// ── Graph Generation API ─────────────────────────────────────────────────────
+
+export const generateGraph = async (data: GenerateGraphRequest): Promise<GenerateGraphResponse> => {
+  const res = await api.post<GenerateGraphResponse>('/graph/generate', data);
+  if (res.data && res.data.graph_image && !res.data.graph_image.startsWith('data:')) {
+    res.data.graph_image = `data:image/png;base64,${res.data.graph_image}`;
+  }
+  return res.data;
+};
+
 // ── Standard Chat Function ───────────────────────────────────────────────────
 
 export const sendChatMessage = async (
@@ -73,26 +99,25 @@ export const sendChatMessage = async (
   return res.data;
 };
 
-// ── SSE Streaming Chat Function ──────────────────────────────────────────────
+// ── SSE Streaming Chat Function (Token & Stage Streaming) ───────────────────
 
 export const sendChatMessageStream = async (
   message: string,
   sessionId: string = 'default',
   onStep: (step: ProcessingStep) => void,
+  onToken: (token: string) => void,
   onResult: (res: ChatResponse) => void,
   onError: (err: any) => void
 ) => {
   try {
     const response = await fetch('/api/chat/stream', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, session_id: sessionId }),
     });
 
     if (!response.ok || !response.body) {
-      // Fallback to standard chat endpoint if stream is unavailable
+      // Fallback to standard HTTP POST /api/chat
       const standardRes = await sendChatMessage(message, sessionId);
       onResult(standardRes);
       return;
@@ -138,7 +163,20 @@ export const sendChatMessageStream = async (
                 }
                 break;
 
+              case 'token':
+                if (parsed.content) {
+                  onToken(parsed.content);
+                } else if (parsed.token) {
+                  onToken(parsed.token);
+                } else if (parsed.text) {
+                  onToken(parsed.text);
+                }
+                break;
+
               case 'final_answer':
+                if (parsed.content && !buffer.length) {
+                  // If final answer is provided as a complete text
+                }
                 break;
 
               case 'result':
@@ -158,7 +196,7 @@ export const sendChatMessageStream = async (
                 break;
             }
           } catch {
-            // Ignore malformed SSE payloads
+            // Ignore partial SSE lines
           }
         }
       }
