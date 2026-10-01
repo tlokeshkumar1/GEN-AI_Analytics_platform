@@ -1,128 +1,128 @@
 import React, { useState, FormEvent } from 'react';
 import {
-    ShieldCheck,
-    Eye,
-    EyeOff,
-    Lock,
-    Mail,
-    ArrowRight,
-    CheckCircle2,
-    Server,
-    Cpu,
-    Database,
-    ExternalLink,
-    AlertCircle,
-    Sparkles,
-    Layers,
-    KeyRound
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  ArrowRight,
+  CheckCircle2,
+  Server,
+  Cpu,
+  Database,
+  ExternalLink,
+  AlertCircle,
+  Sparkles,
+  Layers,
+  KeyRound
 } from 'lucide-react';
 
 export interface UserContext {
-    user_id: string;
-    email: string;
-    name: string;
-    roles: string[];
+  user_id: string;
+  email: string;
+  name: string;
+  roles: string[];
 }
 
 export interface EnterpriseSignInProps {
-    onSignInSuccess?: (user: UserContext) => void;
-    apiBaseUrl?: string;
-    ssoRedirectUrl?: string;
+  onSignInSuccess?: (user: UserContext) => void;
+  apiBaseUrl?: string;
+  ssoRedirectUrl?: string;
 }
 
 export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
-    onSignInSuccess,
-    apiBaseUrl = '',
-    ssoRedirectUrl = '/login'
+  onSignInSuccess,
+  apiBaseUrl = '',
+  ssoRedirectUrl = '/login'
 }) => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [rememberMe, setRememberMe] = useState(true);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isSsoLoading, setIsSsoLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSsoLoading, setIsSsoLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    // Enterprise SSO Auth Handler
-    const handleSSORedirect = () => {
-        setIsSsoLoading(true);
-        setError(null);
-        setTimeout(() => {
-            setIsSsoLoading(false);
-            if (onSignInSuccess) {
-                onSignInSuccess({
-                    user_id: 'usr_btp_ias_9941',
-                    email: 'lokesh.kumar@neovatic.corp',
-                    name: 'Lokesh Kumar',
-                    roles: ['SAP_Universal_ID', 'Enterprise_Admin', 'Analytics_Director']
-                });
-            }
-        }, 600);
-    };
+  // Enterprise SSO Auth Handler
+  const handleSSORedirect = () => {
+    setIsSsoLoading(true);
+    setError(null);
+    setTimeout(() => {
+      setIsSsoLoading(false);
+      if (onSignInSuccess) {
+        onSignInSuccess({
+          user_id: 'usr_btp_ias_9941',
+          email: 'lokesh.kumar@neovatic.corp',
+          name: 'Lokesh Kumar',
+          roles: ['SAP_Universal_ID', 'Enterprise_Admin', 'Analytics_Director']
+        });
+      }
+    }, 600);
+  };
 
-    // Direct Credential Auth Submission
-    const handleSubmit = async (e: FormEvent) => {
-        e.preventDefault();
-        if (!email || !password) {
-            setError('Please provide both corporate email and master password.');
-            return;
+  // Direct Credential Auth Submission
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setError('Please provide both corporate email and master password.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      let userContext: UserContext | null = null;
+      try {
+        // 1. Submit Credentials to Auth Endpoint if available
+        const loginRes = await fetch(`${apiBaseUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, rememberMe })
+        });
+
+        if (loginRes.ok) {
+          // 2. Fetch User Context and Claims
+          const meRes = await fetch(`${apiBaseUrl}/api/auth/me`, {
+            headers: { 'Content-Type': 'application/json' }
+          });
+
+          if (meRes.ok) {
+            userContext = await meRes.json();
+          }
         }
+      } catch {
+        // API offline fallback
+      }
 
-        setIsLoading(true);
-        setError(null);
+      // If backend API isn't present, authenticate smoothly with corporate credentials
+      if (!userContext) {
+        const formattedName = email.split('@')[0]
+          .replace(/[._-]/g, ' ')
+          .replace(/\b\w/g, l => l.toUpperCase());
 
-        try {
-            let userContext: UserContext | null = null;
-            try {
-                // 1. Submit Credentials to Auth Endpoint if available
-                const loginRes = await fetch(`${apiBaseUrl}/api/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password, rememberMe })
-                });
+        userContext = {
+          user_id: 'usr_btp_' + Math.random().toString(36).substring(2, 9),
+          email,
+          name: formattedName || 'Enterprise User',
+          roles: ['Enterprise_Admin', 'Analytics_Director', 'XSUAA_Viewer']
+        };
+      }
 
-                if (loginRes.ok) {
-                    // 2. Fetch User Context and Claims
-                    const meRes = await fetch(`${apiBaseUrl}/api/auth/me`, {
-                        headers: { 'Content-Type': 'application/json' }
-                    });
+      if (onSignInSuccess) {
+        onSignInSuccess(userContext);
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Authentication service temporarily unreachable.';
+      setError(errMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-                    if (meRes.ok) {
-                        userContext = await meRes.json();
-                    }
-                }
-            } catch {
-                // API offline fallback
-            }
-
-            // If backend API isn't present, authenticate smoothly with corporate credentials
-            if (!userContext) {
-                const formattedName = email.split('@')[0]
-                    .replace(/[._-]/g, ' ')
-                    .replace(/\b\w/g, l => l.toUpperCase());
-
-                userContext = {
-                    user_id: 'usr_btp_' + Math.random().toString(36).substring(2, 9),
-                    email,
-                    name: formattedName || 'Enterprise User',
-                    roles: ['Enterprise_Admin', 'Analytics_Director', 'XSUAA_Viewer']
-                };
-            }
-
-            if (onSignInSuccess) {
-                onSignInSuccess(userContext);
-            }
-        } catch (err: unknown) {
-            const errMsg = err instanceof Error ? err.message : 'Authentication service temporarily unreachable.';
-            setError(errMsg);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    return (
-        <div className="enterprise-login-root">
-            <style>{`
+  return (
+    <div className="enterprise-login-root">
+      <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
 
         .enterprise-login-root {
@@ -661,220 +661,220 @@ export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
         }
       `}</style>
 
-            <div className="auth-split-wrapper">
-                {/* Left Side: Editorial Platform Presentation & Telemetry */}
-                <div className="auth-left-brand-pane">
-                    <div>
-                        <div className="brand-top-row">
-                            <div className="brand-icon-box">
-                                <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
-                                    <path d="M9 23V9L17 23V9" stroke="#FCFCFB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    <circle cx="23" cy="11" r="2.2" fill="#547A9B" />
-                                </svg>
-                            </div>
-                            <div className="brand-title-group">
-                                <h1>NEOVATIC GEN-AI PLATFORM</h1>
-                                <p>SAP HANA Cloud &amp; AI Core</p>
-                            </div>
-                        </div>
-
-                        <div className="brand-hero-content">
-                            <div className="brand-eyebrow">
-                                <Sparkles size={13} color="#547A9B" />
-                                Enterprise Analytics &amp; RAG Service
-                            </div>
-                            <h2 className="brand-headline">
-                                Unified Data Intelligence &amp; Autonomous Vector Synthesis
-                            </h2>
-                            <p className="brand-description">
-                                Direct conversational queries, real-time natural language to SAP HANA SQL generation, and multi-tenant RAG exploration across enterprise business records.
-                            </p>
-
-                            {/* Live Status Telemetry Box */}
-                            <div className="system-status-panel">
-                                <div className="status-panel-header">
-                                    <span className="status-panel-title">
-                                        <Layers size={13} />
-                                        Live Federated Infrastructure
-                                    </span>
-                                    <div className="live-ping-wrapper">
-                                        <span className="live-dot" />
-                                        <span>Operational</span>
-                                    </div>
-                                </div>
-
-                                <div className="status-item-list">
-                                    <div className="status-row">
-                                        <div className="status-row-left">
-                                            <Database size={15} color="#547A9B" />
-                                            <span>SAP HANA Cloud Vector Engine</span>
-                                        </div>
-                                        <span className="status-badge-chip">CONNECTED</span>
-                                    </div>
-
-                                    <div className="status-row">
-                                        <div className="status-row-left">
-                                            <Cpu size={15} color="#4F8065" />
-                                            <span>NVIDIA NIM Inference Runtime</span>
-                                        </div>
-                                        <span className="status-badge-chip">ONLINE</span>
-                                    </div>
-
-                                    <div className="status-row">
-                                        <div className="status-row-left">
-                                            <Server size={15} color="#756A98" />
-                                            <span>SAP AI Core &amp; XSUAA Identity</span>
-                                        </div>
-                                        <span className="status-badge-chip">READY</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="brand-footer-specs">
-                        <span>Tenant: eu10.hana.ondemand.com</span>
-                        <span>•</span>
-                        <span>MTA v1.0.0-PROD</span>
-                        <span>•</span>
-                        <span>Multi-Agent Mesh</span>
-                    </div>
-                </div>
-
-                {/* Right Side: Authentication Card */}
-                <div className="auth-right-form-pane">
-                    <div className="auth-card-container">
-                        <div className="auth-card">
-                            <div className="auth-card-header">
-                                <h2>Enterprise Sign In</h2>
-                                <p>Authenticate with your corporate credentials to access tenant analytics.</p>
-                            </div>
-
-                            {/* Error Banner */}
-                            {error && (
-                                <div className="auth-error-banner" role="alert">
-                                    <AlertCircle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
-                                    <div>{error}</div>
-                                </div>
-                            )}
-
-                            {/* Primary Enterprise SSO Option */}
-                            <button
-                                type="button"
-                                className="btn-sso-primary"
-                                onClick={handleSSORedirect}
-                                disabled={isSsoLoading || isLoading}
-                            >
-                                {isSsoLoading ? (
-                                    <div className="spinner" />
-                                ) : (
-                                    <>
-                                        <KeyRound size={17} />
-                                        <span>Sign in with SAP Universal ID / BTP IAS</span>
-                                        <ArrowRight size={15} style={{ marginLeft: 2 }} />
-                                    </>
-                                )}
-                            </button>
-
-                            <div className="auth-separator">
-                                <span>or continue with corporate email</span>
-                            </div>
-
-                            {/* Secondary Direct Credential Form */}
-                            <form onSubmit={handleSubmit}>
-                                <div className="form-group">
-                                    <label className="form-label" htmlFor="corporate-email">Corporate Email Address</label>
-                                    <div className="input-relative-wrap">
-                                        <Mail size={16} className="input-icon-left" />
-                                        <input
-                                            id="corporate-email"
-                                            type="email"
-                                            className="enterprise-input"
-                                            placeholder="name@enterprise.com"
-                                            value={email}
-                                            onChange={(e) => setEmail(e.target.value)}
-                                            required
-                                            autoComplete="username"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="form-group">
-                                    <label className="form-label" htmlFor="corporate-password">Enterprise Password</label>
-                                    <div className="input-relative-wrap">
-                                        <Lock size={16} className="input-icon-left" />
-                                        <input
-                                            id="corporate-password"
-                                            type={showPassword ? 'text' : 'password'}
-                                            className="enterprise-input"
-                                            placeholder="••••••••••••"
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                            required
-                                            autoComplete="current-password"
-                                        />
-                                        <button
-                                            type="button"
-                                            className="input-btn-right"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                        >
-                                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="form-utility-row">
-                                    <label className="remember-checkbox-label">
-                                        <input
-                                            type="checkbox"
-                                            checked={rememberMe}
-                                            onChange={(e) => setRememberMe(e.target.checked)}
-                                        />
-                                        <span>Remember session (12 hrs)</span>
-                                    </label>
-                                    <a href="#need-help" className="link-subtle">
-                                        Forgot password?
-                                    </a>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    className="btn-submit-secondary"
-                                    disabled={isLoading || isSsoLoading}
-                                >
-                                    {isLoading ? (
-                                        <div className="spinner-dark" />
-                                    ) : (
-                                        <>
-                                            <span>Direct Enterprise Authenticate</span>
-                                            <ArrowRight size={15} />
-                                        </>
-                                    )}
-                                </button>
-                            </form>
-                        </div>
-
-                        {/* Compliance & Support Links Footer */}
-                        <div className="auth-compliance-footer">
-                            <div className="compliance-pill">
-                                <ShieldCheck size={14} color="#4F8065" />
-                                <span>Protected by SAP Authorization &amp; Trust Management (XSUAA) • 256-Bit SSL</span>
-                            </div>
-                            <div className="bottom-links">
-                                <a href="#access-help">Need access help?</a>
-                                <span>•</span>
-                                <a href="/api/health" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                    System Health (/api/health)
-                                    <ExternalLink size={11} />
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+      <div className="auth-split-wrapper">
+        {/* Left Side: Editorial Platform Presentation & Telemetry */}
+        <div className="auth-left-brand-pane">
+          <div>
+            <div className="brand-top-row">
+              <div className="brand-icon-box">
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+                  <path d="M9 23V9L17 23V9" stroke="#FCFCFB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="23" cy="11" r="2.2" fill="#547A9B" />
+                </svg>
+              </div>
+              <div className="brand-title-group">
+                <h1>NEOVATIC GEN-AI ANALYTICS PLATFORM</h1>
+                <p>SAP HANA Cloud &amp; AI Core</p>
+              </div>
             </div>
+
+            <div className="brand-hero-content">
+              <div className="brand-eyebrow">
+                <Sparkles size={13} color="#547A9B" />
+                Enterprise Analytics &amp; RAG Service
+              </div>
+              <h2 className="brand-headline">
+                Unified Data Intelligence &amp; Autonomous Vector Synthesis
+              </h2>
+              <p className="brand-description">
+                Direct conversational queries, real-time natural language to SAP HANA SQL generation, and multi-tenant RAG exploration across enterprise business records.
+              </p>
+
+              {/* Live Status Telemetry Box */}
+              <div className="system-status-panel">
+                <div className="status-panel-header">
+                  <span className="status-panel-title">
+                    <Layers size={13} />
+                    Live Federated Infrastructure
+                  </span>
+                  <div className="live-ping-wrapper">
+                    <span className="live-dot" />
+                    <span>Operational</span>
+                  </div>
+                </div>
+
+                <div className="status-item-list">
+                  <div className="status-row">
+                    <div className="status-row-left">
+                      <Database size={15} color="#547A9B" />
+                      <span>SAP HANA Cloud Vector Engine</span>
+                    </div>
+                    <span className="status-badge-chip">CONNECTED</span>
+                  </div>
+
+                  <div className="status-row">
+                    <div className="status-row-left">
+                      <Cpu size={15} color="#4F8065" />
+                      <span>NVIDIA NIM Inference Runtime</span>
+                    </div>
+                    <span className="status-badge-chip">ONLINE</span>
+                  </div>
+
+                  <div className="status-row">
+                    <div className="status-row-left">
+                      <Server size={15} color="#756A98" />
+                      <span>SAP AI Core &amp; XSUAA Identity</span>
+                    </div>
+                    <span className="status-badge-chip">READY</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="brand-footer-specs">
+            <span>Tenant: eu10.hana.ondemand.com</span>
+            <span>•</span>
+            <span>MTA v1.0.0-PROD</span>
+            <span>•</span>
+            <span>Multi-Agent Mesh</span>
+          </div>
         </div>
-    );
+
+        {/* Right Side: Authentication Card */}
+        <div className="auth-right-form-pane">
+          <div className="auth-card-container">
+            <div className="auth-card">
+              <div className="auth-card-header">
+                <h2>Enterprise Sign In</h2>
+                <p>Authenticate with your corporate credentials to access tenant analytics.</p>
+              </div>
+
+              {/* Error Banner */}
+              {error && (
+                <div className="auth-error-banner" role="alert">
+                  <AlertCircle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <div>{error}</div>
+                </div>
+              )}
+
+              {/* Primary Enterprise SSO Option */}
+              <button
+                type="button"
+                className="btn-sso-primary"
+                onClick={handleSSORedirect}
+                disabled={isSsoLoading || isLoading}
+              >
+                {isSsoLoading ? (
+                  <div className="spinner" />
+                ) : (
+                  <>
+                    <KeyRound size={17} />
+                    <span>Sign in with SAP Universal ID / BTP IAS</span>
+                    <ArrowRight size={15} style={{ marginLeft: 2 }} />
+                  </>
+                )}
+              </button>
+
+              <div className="auth-separator">
+                <span>or continue with corporate email</span>
+              </div>
+
+              {/* Secondary Direct Credential Form */}
+              <form onSubmit={handleSubmit}>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="corporate-email">Corporate Email Address</label>
+                  <div className="input-relative-wrap">
+                    <Mail size={16} className="input-icon-left" />
+                    <input
+                      id="corporate-email"
+                      type="email"
+                      className="enterprise-input"
+                      placeholder="name@enterprise.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoComplete="username"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="corporate-password">Enterprise Password</label>
+                  <div className="input-relative-wrap">
+                    <Lock size={16} className="input-icon-left" />
+                    <input
+                      id="corporate-password"
+                      type={showPassword ? 'text' : 'password'}
+                      className="enterprise-input"
+                      placeholder="••••••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      className="input-btn-right"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-utility-row">
+                  <label className="remember-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                    />
+                    <span>Remember session (12 hrs)</span>
+                  </label>
+                  <a href="#need-help" className="link-subtle">
+                    Forgot password?
+                  </a>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn-submit-secondary"
+                  disabled={isLoading || isSsoLoading}
+                >
+                  {isLoading ? (
+                    <div className="spinner-dark" />
+                  ) : (
+                    <>
+                      <span>Direct Enterprise Authenticate</span>
+                      <ArrowRight size={15} />
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+
+            {/* Compliance & Support Links Footer */}
+            <div className="auth-compliance-footer">
+              <div className="compliance-pill">
+                <ShieldCheck size={14} color="#4F8065" />
+                <span>Protected by SAP Authorization &amp; Trust Management (XSUAA) • 256-Bit SSL</span>
+              </div>
+              <div className="bottom-links">
+                <a href="#access-help">Need access help?</a>
+                <span>•</span>
+                <a href="/api/health" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  System Health (/api/health)
+                  <ExternalLink size={11} />
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default EnterpriseSignIn;

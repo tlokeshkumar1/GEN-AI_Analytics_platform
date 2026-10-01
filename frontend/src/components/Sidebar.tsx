@@ -89,9 +89,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed left-0 top-0 lg:top-[72px] bottom-0 w-[280px] sm:w-[260px] bg-white border-r border-[#E2E8F0] z-50 lg:z-40 flex flex-col justify-between overflow-y-auto select-none transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
+        className={`fixed left-0 top-0 lg:top-[72px] bottom-0 w-[280px] sm:w-[260px] bg-white border-r border-[#E2E8F0] z-50 lg:z-40 flex flex-col justify-between overflow-y-auto select-none transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          }`}
       >
         <div className="p-space-md">
           {/* Mobile Drawer Header with Close Button */}
@@ -150,11 +149,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onNavigate(item.id);
                     onClose();
                   }}
-                  className={`w-full flex items-center justify-between px-space-sm py-2.5 sm:py-2 rounded-xl transition-all font-body-sm text-body-sm text-left ${
-                    isActive
+                  className={`w-full flex items-center justify-between px-space-sm py-2.5 sm:py-2 rounded-xl transition-all font-body-sm text-body-sm text-left ${isActive
                       ? activeClasses
                       : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A] border border-transparent'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2.5 truncate">
                     <span className={`material-symbols-outlined text-[17px] ${isActive ? activeIconClass : 'text-[#64748B]'}`}>
@@ -174,19 +172,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               );
             })}
           </nav>
-        </div>
-
-        {/* HANA Operational Status Footer Container */}
-        <div className="p-space-md bg-[#F8FAFC] m-space-sm rounded-xl border border-[#E2E8F0] mb-16 lg:mb-space-sm">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] shadow-[0_0_6px_rgba(22,163,74,0.5)]"></span>
-            <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-[#0F172A]">
-              HANA Cloud Operational
-            </span>
-          </div>
-          <p className="font-label-sm text-label-sm text-[#64748B] leading-tight">
-            Python Venv · SAP BTP MTA Architecture v1.0.0
-          </p>
         </div>
       </aside>
     </>

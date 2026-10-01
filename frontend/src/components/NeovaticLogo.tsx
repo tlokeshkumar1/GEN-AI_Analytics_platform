@@ -42,7 +42,7 @@ export const NeovaticLogo: React.FC<NeovaticLogoProps> = ({
       {showText && (
         <div className="flex flex-col text-left min-w-0">
           <span className="font-headline-sm text-[15px] sm:text-[17px] leading-tight tracking-tight text-[#0F172A] font-semibold truncate">
-            NEOVATIC GEN-AI PLATFORM
+            NEOVATIC GEN-AI ANALYTICS PLATFORM
           </span>
           <span className="hidden xs:inline-block font-label-sm text-[9px] sm:text-[10px] leading-tight text-[#64748B] uppercase tracking-wider font-semibold truncate">
             SAP HANA & AI CORE
