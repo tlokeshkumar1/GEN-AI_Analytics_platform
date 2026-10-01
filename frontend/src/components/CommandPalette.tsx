@@ -47,6 +47,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { id: 'data-sources', title: 'Data Sources & BTP Connectors', category: 'Navigation', icon: 'cloud_sync', hint: 'SAP S/4HANA & HDI containers' },
     { id: 'user-management', title: 'User Management & Roles', category: 'Navigation', icon: 'group', hint: 'Tier-1 RBAC access controls' },
     { id: 'system-settings', title: 'System Settings & In-Memory Config', category: 'Navigation', icon: 'settings', hint: 'Embedding models and cache parameters' },
+    { id: 'enterprise-signin', title: 'Log Out / Switch Enterprise Tenant', category: 'Authentication', icon: 'logout', hint: 'End active session and return to Enterprise Sign In' },
   ];
 
   const quickPrompts = [
@@ -56,8 +57,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     'Top 10 products ranked by total gross margin USD in descending order',
   ];
 
-  const filteredNav = navigationCommands.filter(c => 
-    c.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredNav = navigationCommands.filter(c =>
+    c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.hint.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -69,9 +70,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-6 sm:pt-20 px-2 sm:px-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div 
-        className="fixed inset-0" 
-        onClick={onClose} 
+      <div
+        className="fixed inset-0"
+        onClick={onClose}
       />
       <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-[#CBD5E1] overflow-hidden flex flex-col z-10 max-h-[85vh] sm:max-h-[75vh]">
         {/* Search Input Bar */}
@@ -169,7 +170,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 px-1">
                 {filteredColumns.map((col, idx) => (
-                  <div 
+                  <div
                     key={idx}
                     className="p-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between"
                   >

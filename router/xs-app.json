@@ -1,17 +1,20 @@
 {
   "welcomeFile": "/index.html",
-  "authenticationMethod": "none",
+  "authenticationMethod": "route",
   "routes": [
     {
       "source": "^/api/(.*)$",
       "target": "/api/$1",
       "destination": "backend-api",
+      "authenticationType": "xsuaa",
+      "scope": "$XSAPPNAME.User",
       "csrfProtection": false
     },
     {
       "source": "^/(.*)$",
       "target": "$1",
-      "localDir": "resources"
+      "localDir": "resources",
+      "authenticationType": "xsuaa"
     }
   ]
 }

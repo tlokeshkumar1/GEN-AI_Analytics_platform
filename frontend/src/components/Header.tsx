@@ -7,6 +7,12 @@ interface HeaderProps {
   onNavigate: (path: string) => void;
   onToggleSidebar: () => void;
   activePath: string;
+  onLogout?: () => void;
+  user?: {
+    name?: string;
+    email?: string;
+    roles?: string[];
+  } | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -14,6 +20,8 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   onToggleSidebar,
   activePath,
+  onLogout,
+  user,
 }) => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -47,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {/* Brand Lockup */}
-        <div 
+        <div
           className="flex items-center cursor-pointer min-w-0"
           onClick={() => onNavigate('executive-dashboard')}
         >
@@ -57,18 +65,18 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Center: Global Quick Jump Input Bar */}
       <div className="flex-1 max-w-xl mx-2 sm:mx-space-lg hidden md:block">
-        <div 
+        <div
           onClick={onOpenCommandPalette}
           className="relative flex items-center w-full cursor-pointer group"
         >
           <span className="material-symbols-outlined absolute left-3 text-[#64748B] text-[18px] group-hover:text-[#2563EB] transition-colors">
             search
           </span>
-          <input 
+          <input
             readOnly
             value=""
-            placeholder="Quick jump (e.g., 'Custom Graphs', 'RAG Chat')..." 
-            className="w-full h-9 pl-9 pr-14 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] placeholder:text-[#64748B] font-body-sm text-body-sm border border-[#E2E8F0] focus:border-[#2563EB] transition-colors cursor-pointer" 
+            placeholder="Quick jump (e.g., 'Custom Graphs', 'RAG Chat')..."
+            className="w-full h-9 pl-9 pr-14 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] placeholder:text-[#64748B] font-body-sm text-body-sm border border-[#E2E8F0] focus:border-[#2563EB] transition-colors cursor-pointer"
             type="text"
           />
           <div className="absolute right-2.5 flex items-center gap-1 pointer-events-none">
@@ -91,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Live Cluster Indicators on Desktop & Tablet */}
         <div className="hidden xl:flex items-center gap-space-sm">
           {/* HANA Vector Pill */}
-          <div 
+          <div
             onClick={handleGlobalSync}
             title="Click to ping SAP HANA in-memory vector store"
             className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F0FDFA] border border-[#CCFBF1] text-[#0F766E] hover:bg-[#CCFBF1]/50 transition-colors cursor-pointer"
@@ -123,7 +131,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* User Profile Lockup */}
         <div className="relative">
-          <div 
+          <div
             onClick={() => setProfileOpen(!profileOpen)}
             className="flex items-center gap-2 cursor-pointer p-1 rounded-lg hover:bg-[#F1F5F9] transition-colors"
           >
@@ -145,46 +153,67 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Profile Dropdown Menu */}
           {profileOpen && (
             <>
-              <div 
-                className="fixed inset-0 z-40" 
-                onClick={() => setProfileOpen(false)} 
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setProfileOpen(false)}
               />
               <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-24px)] rounded-xl bg-white border border-[#E2E8F0] shadow-xl p-3 z-50 text-left animate-in fade-in slide-in-from-top-2">
                 <div className="px-2 py-1.5 border-b border-[#E2E8F0] mb-1.5">
-                  <div className="font-label-md text-[#0F172A] font-semibold">Lokesh Kumar</div>
-                  <div className="font-label-sm text-[#64748B]">Enterprise Analytics Director</div>
+                  <div className="font-label-md text-[#0F172A] font-semibold">{user?.name || 'Lokesh Kumar'}</div>
+                  <div className="font-label-sm text-[#64748B]">{user?.email || 'Enterprise Analytics Director'}</div>
                   <div className="font-label-sm text-[10px] text-[#2563EB] mt-0.5 truncate font-medium">SAP BTP Tenant: us10-prod-78</div>
                 </div>
 
                 <div className="space-y-0.5 text-body-sm text-[#334155]">
-                  <button 
+                  <button
                     onClick={() => { setProfileOpen(false); onNavigate('user-management'); }}
                     className="w-full text-left px-2 py-2 rounded-lg hover:bg-[#F1F5F9] flex items-center justify-between transition-colors"
                   >
                     <span>User Management</span>
                     <span className="material-symbols-outlined text-[16px] text-[#64748B]">chevron_right</span>
                   </button>
-                  <button 
+                  <button
                     onClick={() => { setProfileOpen(false); onNavigate('system-settings'); }}
                     className="w-full text-left px-2 py-2 rounded-lg hover:bg-[#F1F5F9] flex items-center justify-between transition-colors"
                   >
                     <span>System Settings</span>
                     <span className="material-symbols-outlined text-[16px] text-[#64748B]">chevron_right</span>
                   </button>
-                  <button 
+                  <button
                     onClick={() => { setProfileOpen(false); onNavigate('alerts-notifications'); }}
                     className="w-full text-left px-2 py-2 rounded-lg hover:bg-[#F1F5F9] flex items-center justify-between transition-colors"
                   >
                     <span>Alerts & Notifications</span>
                     <span className="material-symbols-outlined text-[16px] text-[#64748B]">chevron_right</span>
                   </button>
-                  <button 
+                  <button
                     onClick={() => { setProfileOpen(false); onNavigate('data-sources'); }}
                     className="w-full text-left px-2 py-2 rounded-lg hover:bg-[#F1F5F9] flex items-center justify-between transition-colors"
                   >
                     <span>HDI Data Sources</span>
                     <span className="material-symbols-outlined text-[16px] text-[#64748B]">chevron_right</span>
                   </button>
+
+                  {/* Dedicated Logout Option */}
+                  <div className="pt-1 mt-1 border-t border-[#E2E8F0]">
+                    <button
+                      onClick={() => {
+                        setProfileOpen(false);
+                        if (onLogout) {
+                          onLogout();
+                        } else {
+                          onNavigate('enterprise-signin');
+                        }
+                      }}
+                      className="w-full text-left px-2 py-2 rounded-lg hover:bg-rose-50 text-rose-600 flex items-center justify-between transition-colors font-medium group"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[17px] text-rose-600 group-hover:-translate-x-0.5 transition-transform">logout</span>
+                        <span>Log Out</span>
+                      </span>
+                      <span className="text-[10px] text-rose-500 font-mono">End Session</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="pt-2 mt-2 border-t border-[#E2E8F0]">
