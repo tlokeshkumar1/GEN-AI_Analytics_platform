@@ -5,6 +5,9 @@ import os
 import json
 import base64
 import requests
+from api.utils.logger import get_logger
+
+logger = get_logger("routes.auth")
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -75,11 +78,59 @@ class LoginRequest(BaseModel):
 
 from api.config import settings
 
+def check_xsuaa_scopes(scopes: list) -> tuple:
+    """
+    Checks token scopes for Admin, Member, and Token_Exchange role definitions.
+    Robustly handles prefixed scopes (e.g. 'gen-ai-analytics-platform-dev!t75181.Admin',
+    '$XSAPPNAME.Admin', 'Admin', etc.).
+    """
+    has_admin = False
+    has_member = False
+    has_token_exchange = False
+
+    for s in scopes:
+        scope_str = str(s).strip()
+        if (
+            scope_str.endswith(".Admin") or 
+            scope_str.endswith(":Admin") or 
+            scope_str == "Admin" or 
+            scope_str == "$XSAPPNAME.Admin" or
+            ".Admin." in scope_str
+        ):
+            has_admin = True
+        
+        if (
+            scope_str.endswith(".Member") or 
+            scope_str.endswith(":Member") or 
+            scope_str == "Member" or 
+            scope_str == "$XSAPPNAME.Member" or
+            ".Member." in scope_str or
+            scope_str.endswith(".User")
+        ):
+            has_member = True
+
+        if (
+            scope_str.endswith(".Token_Exchange") or 
+            scope_str.endswith(":Token_Exchange") or 
+            scope_str == "Token_Exchange" or 
+            scope_str == "$XSAPPNAME.Token_Exchange" or 
+            scope_str.startswith("uaa.") or 
+            scope_str == "openid"
+        ):
+            has_token_exchange = True
+
+    return has_admin, has_member, has_token_exchange
+
+
 def validate_user_ias_jwt(token: str) -> Optional[Dict[str, Any]]:
     """
     Validates that a JWT token belongs to an end-user with valid SAP IAS / XSUAA claims
     and role collections from xs-security.json ($XSAPPNAME.Admin, $XSAPPNAME.Member, $XSAPPNAME.Token_Exchange).
-    Supports Member access, Admin access, and Dual (Both) access.
+
+    Role resolution rules:
+      1. Member Access:  $XSAPPNAME.Member + $XSAPPNAME.Token_Exchange  -> role = "Member", roles = ["Member"]
+      2. Admin Access:   $XSAPPNAME.Admin  + $XSAPPNAME.Token_Exchange  -> role = "Admin", roles = ["Admin"]
+      3. Both (Dual):    $XSAPPNAME.Admin  + $XSAPPNAME.Member + $XSAPPNAME.Token_Exchange -> role = "Admin", roles = ["Admin", "Member"] (Admin takes precedence)
     """
     claims = parse_ias_jwt(token)
     if not claims:
@@ -94,48 +145,25 @@ def validate_user_ias_jwt(token: str) -> Optional[Dict[str, Any]]:
         return None
 
     scopes = claims.get("scope", [])
-    xsappname = settings.XSUAA_XSAPPNAME or "gen-ai-analytics-platform-dev!t75181"
+    has_admin_scope, has_member_scope, has_token_exchange = check_xsuaa_scopes(scopes)
 
-    admin_tokens = {
-        f"{xsappname}.Admin",
-        "$XSAPPNAME.Admin",
-        "Admin"
-    }
-    member_tokens = {
-        f"{xsappname}.Member",
-        "$XSAPPNAME.Member",
-        "Member"
-    }
-    token_exchange_tokens = {
-        f"{xsappname}.Token_Exchange",
-        "$XSAPPNAME.Token_Exchange",
-        "uaa.user",
-        "uaa.resource",
-        "Token_Exchange"
-    }
-
-    token_scopes_set = set(scopes)
-
-    has_admin_scope = bool(token_scopes_set.intersection(admin_tokens))
-    has_member_scope = bool(token_scopes_set.intersection(member_tokens))
-    has_token_exchange = bool(token_scopes_set.intersection(token_exchange_tokens))
-
-    # If scopes are non-empty, enforce presence of Token_Exchange along with Member and/or Admin
-    if scopes and not has_token_exchange:
-        return None
-
-    roles = []
-    if has_admin_scope and has_member_scope and has_token_exchange:
-        roles = ["SAP_Universal_ID", "Enterprise_Admin", "Analytics_User"]
-    elif has_admin_scope and has_token_exchange:
-        roles = ["SAP_Universal_ID", "Enterprise_Admin"]
-    elif has_member_scope and has_token_exchange:
-        roles = ["SAP_Universal_ID", "Analytics_User"]
-    elif not scopes:
-        # Fallback when no scopes are provided in default session token
-        roles = ["SAP_Universal_ID", "Analytics_User"]
+    # Determine primary display role & roles array based on XSUAA rules
+    if has_admin_scope and has_member_scope:
+        role = "Admin"
+        roles = ["Admin", "Member"]
+    elif has_admin_scope:
+        role = "Admin"
+        roles = ["Admin"]
+    elif has_member_scope:
+        role = "Member"
+        roles = ["Member"]
+    elif not scopes or has_token_exchange:
+        # Default fallback for valid SAP session without explicit role scopes
+        role = "Member"
+        roles = ["Member"]
     else:
-        return None
+        role = "Member"
+        roles = ["Member"]
 
     given_name = claims.get("given_name", "")
     family_name = claims.get("family_name", "")
@@ -151,6 +179,7 @@ def validate_user_ias_jwt(token: str) -> Optional[Dict[str, Any]]:
         "email": email or "",
         "name": full_name,
         "scopes": scopes,
+        "role": role,
         "roles": roles
     }
 
@@ -160,10 +189,9 @@ def sso_login(req: SSOLoginRequest):
     """
     Authenticates against SAP BTP Authorization & Trust Management Service (XSUAA / IAS).
     Strictly validates user tokens against xs-security.json role collections:
-    1. Member Access: $XSAPPNAME.Member + $XSAPPNAME.Token_Exchange -> Analytics_User
-    2. Admin Access: $XSAPPNAME.Admin + $XSAPPNAME.Token_Exchange -> Enterprise_Admin
-    3. Dual Access: $XSAPPNAME.Admin + $XSAPPNAME.Member + $XSAPPNAME.Token_Exchange -> Enterprise_Admin & Analytics_User
-    Recognizes active SAP Public / Private Cloud Portal SSO sessions.
+    1. Member Access: $XSAPPNAME.Member + $XSAPPNAME.Token_Exchange -> role = "Member"
+    2. Admin Access: $XSAPPNAME.Admin + $XSAPPNAME.Token_Exchange -> role = "Admin"
+    3. Both Roles: Admin takes precedence -> role = "Admin"
     """
     # 1. Validate if an end-user SAP IAS/XSUAA Bearer JWT token was provided
     token = req.ias_token or (req.password_or_passcode if req.password_or_passcode and req.password_or_passcode.count(".") == 2 else None)
@@ -190,102 +218,54 @@ def sso_login(req: SSOLoginRequest):
     client_id = settings.XSUAA_CLIENT_ID or os.environ.get("AICORE_CLIENT_ID")
     client_secret = settings.XSUAA_CLIENT_SECRET or os.environ.get("AICORE_CLIENT_SECRET")
 
-    if username and password and auth_url and client_id and client_secret:
-        try:
-            resp = requests.post(
-                auth_url,
-                data={
-                    "grant_type": "password",
-                    "username": username,
-                    "password": password
-                },
-                auth=(client_id, client_secret),
-                timeout=10
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                access_token = data.get("access_token")
-                if access_token:
-                    user_info = validate_user_ias_jwt(access_token)
-                    if not user_info:
-                        lower_user = username.lower()
-                        is_option_3 = ("admin" in lower_user and "member" in lower_user) or any(k in lower_user for k in ["dual", "option3", "both", "admin_member", "member_admin", "admin.member", "universal_id"])
-                        if is_option_3:
-                            roles = ["SAP_Universal_ID", "Enterprise_Admin", "Analytics_User"]
-                            scopes = ["$XSAPPNAME.Admin", "$XSAPPNAME.Member", "$XSAPPNAME.Token_Exchange"]
-                        elif "admin" in lower_user:
-                            roles = ["SAP_Universal_ID", "Enterprise_Admin"]
-                            scopes = ["$XSAPPNAME.Admin", "$XSAPPNAME.Token_Exchange"]
-                        else:
-                            roles = ["SAP_Universal_ID", "Analytics_User"]
-                            scopes = ["$XSAPPNAME.Member", "$XSAPPNAME.Token_Exchange"]
+    if username and password:
+        if auth_url and client_id and client_secret:
+            try:
+                resp = requests.post(
+                    auth_url,
+                    data={
+                        "grant_type": "password",
+                        "username": username,
+                        "password": password
+                    },
+                    auth=(client_id, client_secret),
+                    timeout=10
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    access_token = data.get("access_token")
+                    if access_token:
+                        user_info = validate_user_ias_jwt(access_token)
+                        if not user_info:
+                            lower_user = username.lower()
+                            has_admin = "admin" in lower_user
+                            has_member = "member" in lower_user or not has_admin
+                            role = "Admin" if has_admin else "Member"
+                            roles = ["Admin", "Member"] if (has_admin and has_member) else ([role])
 
-                        user_info = {
-                            "user_id": username,
-                            "email": username,
-                            "name": f"SAP IAS User ({username})",
-                            "scopes": scopes,
-                            "roles": roles
+                            user_info = {
+                                "user_id": username,
+                                "email": username,
+                                "name": f"SAP IAS User ({username})",
+                                "scopes": ["$XSAPPNAME.Admin" if has_admin else "$XSAPPNAME.Member", "$XSAPPNAME.Token_Exchange"],
+                                "role": role,
+                                "roles": roles
+                            }
+                        ACTIVE_SESSIONS[access_token] = user_info
+                        return {
+                            "status": "success",
+                            "token": access_token,
+                            "user": user_info
                         }
-                    ACTIVE_SESSIONS[access_token] = user_info
-                    return {
-                        "status": "success",
-                        "token": access_token,
-                        "user": user_info
-                    }
-        except Exception:
-            pass
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.warning(f"[Auth] XSUAA SSO password-grant error: {exc}")
 
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="SAP Universal ID / BTP IAS authentication failed. Invalid credentials or passcode. Access denied."
-        )
-
-    # 3. SAP Public / Private Cloud Portal Active Session Recognition (via XSUAA service binding)
-    if auth_url and client_id and client_secret:
-        result = authenticate_with_ias_oauth(client_id, client_secret, auth_url)
-        if result:
-            access_token = result["token"]
-            claims = result["claims"]
-            user_id = claims.get("user_id") or claims.get("sub") or claims.get("client_id") or "SAP_PORTAL_USER"
-            email = claims.get("email") or ""
-            full_name = claims.get("name") or claims.get("user_name") or "SAP Universal ID User"
-            scopes = claims.get("scope", ["$XSAPPNAME.Admin", "$XSAPPNAME.Member", "$XSAPPNAME.Token_Exchange"])
-
-            xsappname = settings.XSUAA_XSAPPNAME or "gen-ai-analytics-platform-dev!t75181"
-            token_scopes_set = set(scopes)
-            has_admin = any(s in token_scopes_set for s in [f"{xsappname}.Admin", "$XSAPPNAME.Admin", "Admin"])
-            has_member = any(s in token_scopes_set for s in [f"{xsappname}.Member", "$XSAPPNAME.Member", "Member"])
-
-            roles = []
-            if has_admin and has_member:
-                roles = ["SAP_Universal_ID", "Enterprise_Admin", "Analytics_User"]
-            elif has_admin:
-                roles = ["SAP_Universal_ID", "Enterprise_Admin"]
-            elif has_member:
-                roles = ["SAP_Universal_ID", "Analytics_User"]
-            else:
-                # Default for active SAP Portal session recognition -> Dual Option 3 Access
-                roles = ["SAP_Universal_ID", "Enterprise_Admin", "Analytics_User"]
-
-            user_info = {
-                "user_id": user_id,
-                "email": email,
-                "name": full_name,
-                "scopes": scopes,
-                "roles": roles
-            }
-            ACTIVE_SESSIONS[access_token] = user_info
-            return {
-                "status": "success",
-                "token": access_token,
-                "user": user_info
-            }
-
-    # 4. No active end-user IAS session detected in browser
+    # 3. No active end-user IAS session detected in browser
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="No active SAP BTP IAS / Universal ID session detected in browser. Please log into your SAP Portal first in another tab, or sign in with corporate email and password below."
+        detail="NO_SESSION_REQUIRES_LOGIN"
     )
 
 
@@ -299,18 +279,14 @@ def login(req: LoginRequest):
         claims = parse_ias_jwt(req.ias_token)
         if claims:
             user_info = validate_user_ias_jwt(req.ias_token)
-            if not user_info:
-                user_id = claims.get("user_id") or claims.get("sub", "ias_user")
-                email = claims.get("email") or req.email or ""
-                name = claims.get("name") or claims.get("user_name") or user_id
-                user_info = {
-                    "user_id": user_id,
-                    "email": email,
-                    "name": name,
-                    "roles": ["SAP_Universal_ID", "Analytics_User"]
-                }
-            ACTIVE_SESSIONS[req.ias_token] = user_info
-            return {"status": "success", "token": req.ias_token, "user": user_info}
+            if user_info:
+                ACTIVE_SESSIONS[req.ias_token] = user_info
+                return {"status": "success", "token": req.ias_token, "user": user_info}
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="SAP BTP IAS token is valid but missing required XSUAA role collections ($XSAPPNAME.Admin or $XSAPPNAME.Member). Access denied."
+                )
         else:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -342,57 +318,43 @@ def login(req: LoginRequest):
                         if not user_info:
                             claims = parse_ias_jwt(access_token) or {}
                             lower_email = req.email.lower()
-                            is_option_3 = ("admin" in lower_email and "member" in lower_email) or any(k in lower_email for k in ["dual", "option3", "both", "admin_member", "member_admin", "admin.member", "universal_id"])
-                            if is_option_3:
-                                roles = ["SAP_Universal_ID", "Enterprise_Admin", "Analytics_User"]
-                            elif "admin" in lower_email:
-                                roles = ["SAP_Universal_ID", "Enterprise_Admin"]
-                            else:
-                                roles = ["SAP_Universal_ID", "Analytics_User"]
+                            has_admin = "admin" in lower_email
+                            has_member = "member" in lower_email or not has_admin
+                            role = "Admin" if has_admin else "Member"
+                            roles = ["Admin", "Member"] if (has_admin and has_member) else ([role])
 
                             user_info = {
                                 "user_id": claims.get("sub", req.email),
                                 "email": req.email,
                                 "name": claims.get("name") or claims.get("user_name") or req.email.split("@")[0].title(),
+                                "role": role,
                                 "roles": roles
                             }
                         ACTIVE_SESSIONS[access_token] = user_info
                         return {"status": "success", "token": access_token, "user": user_info}
-            except Exception:
-                pass
-
-        # Corporate Credential Session Authentication for Option 1, Option 2, and Option 3
-        lower_email = req.email.lower()
-        is_option_3 = ("admin" in lower_email and "member" in lower_email) or any(
-            k in lower_email for k in ["dual", "option3", "both", "admin_member", "member_admin", "admin.member", "universal_id"]
-        )
-        if is_option_3:
-            roles = ["SAP_Universal_ID", "Enterprise_Admin", "Analytics_User"]
-            scopes = ["$XSAPPNAME.Admin", "$XSAPPNAME.Member", "$XSAPPNAME.Token_Exchange"]
-        elif "admin" in lower_email:
-            roles = ["SAP_Universal_ID", "Enterprise_Admin"]
-            scopes = ["$XSAPPNAME.Admin", "$XSAPPNAME.Token_Exchange"]
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid corporate email or password. SAP XSUAA authentication rejected the credentials."
+                    )
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.warning(f"[Auth] XSUAA password-grant error: {exc}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication service error. Please try again or contact your administrator."
+                )
         else:
-            roles = ["SAP_Universal_ID", "Analytics_User"]
-            scopes = ["$XSAPPNAME.Member", "$XSAPPNAME.Token_Exchange"]
-
-        name_part = req.email.split("@")[0].replace(".", " ").replace("_", " ").title()
-        user_info = {
-            "user_id": req.email,
-            "email": req.email,
-            "name": f"{name_part} (SAP Universal ID)",
-            "scopes": scopes,
-            "roles": roles
-        }
-        token = f"ias_session_{base64.urlsafe_b64encode(req.email.encode()).decode().rstrip('=')}"
-        ACTIVE_SESSIONS[token] = user_info
-        return {"status": "success", "token": token, "user": user_info}
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="XSUAA authentication service not configured. Contact your SAP BTP administrator."
+            )
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid corporate email or password. Access denied."
     )
-
 
 
 @router.get("/me")
@@ -411,12 +373,28 @@ def get_me(authorization: Optional[str] = Header(None)):
     if claims:
         user_id = claims.get("user_id") or claims.get("user_name") or claims.get("sub")
         if user_id:
+            scopes = claims.get("scope", [])
+            has_admin, has_member, _ = check_xsuaa_scopes(scopes)
+            if has_admin and has_member:
+                role = "Admin"
+                roles = ["Admin", "Member"]
+            elif has_admin:
+                role = "Admin"
+                roles = ["Admin"]
+            elif has_member:
+                role = "Member"
+                roles = ["Member"]
+            else:
+                role = "Member"
+                roles = ["Member"]
+
             user_info = {
                 "user_id": user_id,
                 "email": claims.get("email", ""),
                 "name": claims.get("name") or claims.get("user_name") or user_id,
-                "scopes": claims.get("scope", []),
-                "roles": ["Enterprise_User"]
+                "scopes": scopes,
+                "role": role,
+                "roles": roles
             }
             ACTIVE_SESSIONS[token] = user_info
             return user_info

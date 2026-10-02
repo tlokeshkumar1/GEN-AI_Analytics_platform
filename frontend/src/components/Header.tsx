@@ -42,10 +42,10 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const rolesList = user?.roles || [];
-  const isAdmin = rolesList.includes('Enterprise_Admin');
-  const isMember = rolesList.includes('Analytics_User');
+  const isAdmin = rolesList.includes('Admin');
+  const isMember = rolesList.includes('Member');
   const roleLabel = isAdmin ? 'Admin' : (isMember ? 'Member' : 'User');
-  const roleSubtitle = isAdmin ? 'Enterprise Admin' : (isMember ? 'Analytics Member' : 'Standard User');
+  const roleSubtitle = isAdmin ? 'Administrator' : (isMember ? 'Member' : 'Standard User');
 
   return (
     <header className="fixed top-0 left-0 right-0 h-[60px] sm:h-[72px] z-50 bg-white/95 backdrop-blur-md border-b border-[#E2E8F0] flex items-center justify-between px-2.5 sm:px-4 md:px-margin select-none">
@@ -169,7 +169,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="font-label-sm text-[#64748B] truncate">{user?.email || 'user@sap.corp'}</div>
                   <div className="font-label-sm text-[10px] text-[#2563EB] mt-0.5 truncate font-medium flex items-center justify-between">
                     <span>Role: <strong>{roleLabel}</strong></span>
-                    <span className="bg-[#EFF6FF] px-1.5 py-0.5 rounded text-[#1E40AF] font-mono">{user?.roles?.join(', ') || 'Analytics_User'}</span>
+                    <span className="bg-[#EFF6FF] px-1.5 py-0.5 rounded text-[#1E40AF] font-mono">{roleLabel}</span>
                   </div>
                 </div>
 

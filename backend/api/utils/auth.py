@@ -25,11 +25,12 @@ security_scheme = HTTPBearer(auto_error=False)
 class UserContext:
     """Represents the authenticated SAP BTP user extracted from XSUAA JWT token."""
 
-    def __init__(self, user_id: str, email: str, name: str, scopes: List[str], roles: List[str]):
+    def __init__(self, user_id: str, email: str, name: str, scopes: List[str], role: str, roles: List[str]):
         self.user_id: str = user_id
         self.email: str = email
         self.name: str = name
         self.scopes: List[str] = scopes
+        self.role: str = role
         self.roles: List[str] = roles
 
     def to_dict(self) -> Dict[str, Any]:
@@ -38,6 +39,7 @@ class UserContext:
             "email": self.email,
             "name": self.name,
             "scopes": self.scopes,
+            "role": self.role,
             "roles": self.roles,
         }
 
@@ -64,7 +66,11 @@ async def get_current_user(
     """
     FastAPI dependency to get the current authenticated SAP BTP user.
     Reads 'Authorization: Bearer <jwt>' token passed by SAP AppRouter.
-    Falls back to a default mock user in local development mode.
+
+    Role resolution (Admin takes precedence over Member):
+      - $XSAPPNAME.Admin  in scopes  -> role = "Admin"
+      - $XSAPPNAME.Member in scopes  -> role = "Member"
+      - Both Admin + Member in scopes -> role = "Admin"
     """
     if not auth or not auth.credentials:
         logger.warning("[Auth] Missing Authorization header in request.")
@@ -83,17 +89,33 @@ async def get_current_user(
     full_name = f"{given_name} {family_name}".strip() or claims.get("user_name", user_id)
     scopes = claims.get("scope", [])
 
-    xsappname = claims.get("xsappname", "gen-ai-analytics-platform")
-    roles = []
-    if f"{xsappname}.Member" in scopes or f"{xsappname}.User" in scopes:
-        roles.append("Member")
-    if f"{xsappname}.Admin" in scopes:
-        roles.append("Admin")
+    has_admin = any(
+        s.endswith(".Admin") or s.endswith(":Admin") or s == "Admin" or s == "$XSAPPNAME.Admin"
+        for s in scopes
+    )
+    has_member = any(
+        s.endswith(".Member") or s.endswith(":Member") or s == "Member" or s == "$XSAPPNAME.Member" or s.endswith(".User")
+        for s in scopes
+    )
+
+    if has_admin and has_member:
+        role = "Admin"
+        roles = ["Admin", "Member"]
+    elif has_admin:
+        role = "Admin"
+        roles = ["Admin"]
+    elif has_member:
+        role = "Member"
+        roles = ["Member"]
+    else:
+        role = "Member"  # default fallback
+        roles = ["Member"]
 
     return UserContext(
         user_id=user_id,
         email=email,
         name=full_name,
         scopes=scopes,
+        role=role,
         roles=roles,
     )
