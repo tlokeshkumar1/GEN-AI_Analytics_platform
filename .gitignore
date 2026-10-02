@@ -8,3 +8,4 @@ router/resources/assets/
 *.mtar
 mta_archives/
 mta.yaml
+default-env.json

@@ -41,6 +41,12 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  const rolesList = user?.roles || [];
+  const isAdmin = rolesList.includes('Enterprise_Admin');
+  const isMember = rolesList.includes('Analytics_User');
+  const roleLabel = isAdmin ? 'Admin' : (isMember ? 'Member' : 'User');
+  const roleSubtitle = isAdmin ? 'Enterprise Admin' : (isMember ? 'Analytics Member' : 'Standard User');
+
   return (
     <header className="fixed top-0 left-0 right-0 h-[60px] sm:h-[72px] z-50 bg-white/95 backdrop-blur-md border-b border-[#E2E8F0] flex items-center justify-between px-2.5 sm:px-4 md:px-margin select-none">
       {/* Left: Mobile Drawer Trigger + Brand Lockup */}
@@ -137,10 +143,10 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <div className="hidden 2xl:flex flex-col text-right">
               <span className="font-label-md text-label-md text-[#0F172A] font-semibold leading-tight">
-                Analytics Director
+                {user?.name || 'Analytics User'}
               </span>
-              <span className="font-label-sm text-[10px] text-[#64748B] leading-tight">
-                Enterprise Admin
+              <span className="font-label-sm text-[10px] text-[#64748B] leading-tight font-medium">
+                {roleLabel} ({roleSubtitle})
               </span>
             </div>
             <div className="w-8 h-8 rounded-full bg-[#0F172A] hover:bg-[#1E293B] flex items-center justify-center text-white shadow-sm shrink-0 transition-colors">
@@ -159,10 +165,14 @@ export const Header: React.FC<HeaderProps> = ({
               />
               <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-24px)] rounded-xl bg-white border border-[#E2E8F0] shadow-xl p-3 z-50 text-left animate-in fade-in slide-in-from-top-2">
                 <div className="px-2 py-1.5 border-b border-[#E2E8F0] mb-1.5">
-                  <div className="font-label-md text-[#0F172A] font-semibold">{user?.name || 'Lokesh Kumar'}</div>
-                  <div className="font-label-sm text-[#64748B]">{user?.email || 'Enterprise Analytics Director'}</div>
-                  <div className="font-label-sm text-[10px] text-[#2563EB] mt-0.5 truncate font-medium">SAP BTP Tenant: us10-prod-78</div>
+                  <div className="font-label-md text-[#0F172A] font-semibold">{user?.name || 'Analytics User'}</div>
+                  <div className="font-label-sm text-[#64748B] truncate">{user?.email || 'user@sap.corp'}</div>
+                  <div className="font-label-sm text-[10px] text-[#2563EB] mt-0.5 truncate font-medium flex items-center justify-between">
+                    <span>Role: <strong>{roleLabel}</strong></span>
+                    <span className="bg-[#EFF6FF] px-1.5 py-0.5 rounded text-[#1E40AF] font-mono">{user?.roles?.join(', ') || 'Analytics_User'}</span>
+                  </div>
                 </div>
+
 
                 <div className="space-y-0.5 text-body-sm text-[#334155]">
                   <button

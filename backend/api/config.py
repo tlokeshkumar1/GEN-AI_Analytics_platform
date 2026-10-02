@@ -61,10 +61,56 @@ def _get_aicore_credentials_from_vcap():
         pass
     return {}
 
+def _get_xsuaa_credentials_from_vcap():
+    """Extract XSUAA credentials from VCAP_SERVICES or environment."""
+    vcap_services = os.getenv("VCAP_SERVICES")
+    if not vcap_services:
+        # Check default-env.json if present
+        default_env_path = BASE_DIR / "default-env.json"
+        if default_env_path.exists():
+            try:
+                with open(default_env_path, "r", encoding="utf-8") as f:
+                    content = json.load(f)
+                    vcap_services = json.dumps(content.get("VCAP_SERVICES", {}))
+            except Exception:
+                pass
+    if not vcap_services:
+        return {}
+    try:
+        services = json.loads(vcap_services) if isinstance(vcap_services, str) else vcap_services
+        xsuaa_services = services.get("xsuaa", [])
+        for svc in xsuaa_services:
+            creds = svc.get("credentials", {})
+            if creds.get("clientid"):
+                auth_url = creds.get("url", "")
+                if auth_url and not auth_url.endswith("/oauth/token"):
+                    auth_url = auth_url.rstrip("/") + "/oauth/token"
+                return {
+                    "client_id": creds.get("clientid", ""),
+                    "client_secret": creds.get("clientsecret", ""),
+                    "auth_url": auth_url,
+                    "url": creds.get("url", ""),
+                    "xsappname": creds.get("xsappname", ""),
+                    "verification_key": creds.get("verificationkey", ""),
+                    "identity_zone": creds.get("identityzone", "")
+                }
+    except Exception:
+        pass
+    return {}
+
 _vcap_hana = _get_hana_credentials_from_vcap()
 _vcap_aicore = _get_aicore_credentials_from_vcap()
+_vcap_xsuaa = _get_xsuaa_credentials_from_vcap()
 
 class Settings(BaseSettings):
+    # SAP XSUAA Security Configuration
+    XSUAA_URL: str = _vcap_xsuaa.get("url") or os.getenv("XSUAA_URL", "")
+    XSUAA_AUTH_URL: str = _vcap_xsuaa.get("auth_url") or os.getenv("XSUAA_AUTH_URL", "")
+    XSUAA_CLIENT_ID: str = _vcap_xsuaa.get("client_id") or os.getenv("XSUAA_CLIENT_ID", "")
+    XSUAA_CLIENT_SECRET: str = _vcap_xsuaa.get("client_secret") or os.getenv("XSUAA_CLIENT_SECRET", "")
+    XSUAA_XSAPPNAME: str = _vcap_xsuaa.get("xsappname") or os.getenv("XSUAA_XSAPPNAME", "")
+    XSUAA_VERIFICATION_KEY: str = _vcap_xsuaa.get("verification_key") or os.getenv("XSUAA_VERIFICATION_KEY", "")
+
     # SAP AI Core Configuration
     AICORE_AUTH_URL: str = _vcap_aicore.get("auth_url") or os.getenv("AICORE_AUTH_URL", "")
     AICORE_CLIENT_ID: str = _vcap_aicore.get("client_id") or os.getenv("AICORE_CLIENT_ID", "")
@@ -83,11 +129,11 @@ class Settings(BaseSettings):
 
 
     # SAP HANA Cloud Configuration (VCAP_SERVICES takes precedence on CF)
-    HANA_ADDRESS: str = _vcap_hana.get("host") or os.getenv("HANA_ADDRESS", "localhost")
-    HANA_PORT: int = _vcap_hana.get("port") or int(os.getenv("HANA_PORT", "443"))
-    HANA_USER: str = _vcap_hana.get("user") or os.getenv("HANA_USER", "DBADMIN")
+    HANA_ADDRESS: str = _vcap_hana.get("host") or os.getenv("HANA_ADDRESS", "")
+    HANA_PORT: int = _vcap_hana.get("port") or int(os.getenv("HANA_PORT", ""))
+    HANA_USER: str = _vcap_hana.get("user") or os.getenv("HANA_USER", "")
     HANA_PASSWORD: str = _vcap_hana.get("password") or os.getenv("HANA_PASSWORD", "")
-    HANA_SCHEMA: str = _vcap_hana.get("schema") or os.getenv("HANA_SCHEMA", "SALES_ANALYTICS")
+    HANA_SCHEMA: str = _vcap_hana.get("schema") or os.getenv("HANA_SCHEMA", "")
 
     # Application Settings
     APP_ENV: str = os.getenv("APP_ENV", "development")

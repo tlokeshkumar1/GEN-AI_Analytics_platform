@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { SQL_QUERY_RESULTS, SCHEMA_COLUMNS } from '../data/mockData';
 import { queryAnalytics, AnalyticsResponse } from '../services/analyticsService';
 
 interface DataExplorerProps {
@@ -65,10 +64,23 @@ ORDER BY "TotalNetRevenue" DESC;`;
     setTimeout(() => setCopiedSQL(false), 2000);
   };
 
+  React.useEffect(() => {
+    handleRunQuery();
+  }, []);
+
   const exportCSV = () => {
-    const headers = 'Category,Total Net Revenue ($),Total Gross Margin ($),Avg Margin %,Attainment Index\n';
-    const rows = SQL_QUERY_RESULTS.map(r => 
-      `"${r.category}",${r.netRevenue},${r.grossMargin},${r.avgMarginPct}%,${r.attainment}%`
+    const results = liveResults?.results ?? [];
+    if (results.length === 0) {
+      showToast('No live query results to export');
+      return;
+    }
+    const keys = Object.keys(results[0]);
+    const headers = keys.join(',') + '\n';
+    const rows = results.map(r =>
+      keys.map(k => {
+        const val = r[k];
+        return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
+      }).join(',')
     ).join('\n');
     const blob = new Blob([headers + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -77,7 +89,7 @@ ORDER BY "TotalNetRevenue" DESC;`;
     a.download = `HANA_TextToSQL_Export_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('Exported query results to CSV');
+    showToast('Exported live query results to CSV');
   };
 
   return (
@@ -405,63 +417,48 @@ ORDER BY "TotalNetRevenue" DESC;`;
         {/* View 1: Data Grid Canvas */}
         {activeView === 'grid' && (
           <div className="w-full overflow-x-auto scroll-touch">
-            <table className="w-full min-w-[620px] text-left border-collapse">
-              <thead>
-                <tr className="bg-[#F8FAFC] text-[#64748B] font-label-md text-label-md uppercase tracking-wider select-none border-b border-[#E2E8F0]">
-                  <th className="py-3 px-space-lg font-medium text-left">Category</th>
-                  <th className="py-3 px-space-lg font-medium text-right">Total Net Revenue ($)</th>
-                  <th className="py-3 px-space-lg font-medium text-right">Total Gross Margin ($)</th>
-                  <th className="py-3 px-space-lg font-medium text-right">Avg Margin %</th>
-                  <th className="py-3 px-space-lg font-medium text-center">Attainment Index</th>
-                  <th className="py-3 px-space-md text-right font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F1F5F9] text-body-md font-body-md text-[#0F172A]">
-                {SQL_QUERY_RESULTS.map((row) => (
-                  <tr key={row.category} className="hover:bg-[#F8FAFC] transition-colors group">
-                    <td className="py-3.5 px-space-lg font-medium">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${row.colorClass}`}></span>
-                        <span className="font-semibold text-[#0F172A]">{row.category}</span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-space-lg text-right font-mono font-medium text-[#0F172A]">
-                      ${row.netRevenue.toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-space-lg text-right font-mono text-[#475569]">
-                      ${row.grossMargin.toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-space-lg text-right font-mono">
-                      <span className="inline-block px-2 py-0.5 rounded bg-[#F1F5F9] text-[#0F172A] font-semibold border border-[#E2E8F0]">
-                        {row.avgMarginPct}%
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-space-lg">
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="w-24 bg-[#F1F5F9] h-2 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full ${row.colorClass}`} 
-                            style={{ width: `${row.attainment}%` }}
-                          />
-                        </div>
-                        <span className="font-label-sm text-label-sm font-mono text-[#64748B]">
-                          {row.attainment}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-space-md text-right">
-                      <button 
-                        onClick={() => setSelectedRowDetail(row)}
-                        className="h-7 w-7 rounded-full hover:bg-[#F1F5F9] inline-flex items-center justify-center text-[#64748B] hover:text-[#0F172A] transition-colors" 
-                        title="Context drill down"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">visibility</span>
-                      </button>
-                    </td>
+            {liveResults?.results && liveResults.results.length > 0 ? (
+              <table className="w-full min-w-[620px] text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#F8FAFC] text-[#64748B] font-label-md text-label-md uppercase tracking-wider select-none border-b border-[#E2E8F0]">
+                    {Object.keys(liveResults.results[0]).map((col) => (
+                      <th key={col} className="py-3 px-space-lg font-medium text-left">
+                        {col}
+                      </th>
+                    ))}
+                    <th className="py-3 px-space-md text-right font-medium">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[#F1F5F9] text-body-md font-body-md text-[#0F172A]">
+                  {liveResults.results.map((row, rIdx) => (
+                    <tr key={rIdx} className="hover:bg-[#F8FAFC] transition-colors group">
+                      {Object.keys(row).map((colKey) => {
+                        const val = row[colKey];
+                        const isNum = typeof val === 'number';
+                        return (
+                          <td key={colKey} className={`py-3.5 px-space-lg ${isNum ? 'font-mono' : 'font-medium'}`}>
+                            {isNum ? val.toLocaleString() : String(val)}
+                          </td>
+                        );
+                      })}
+                      <td className="py-3.5 px-space-md text-right">
+                        <button
+                          onClick={() => setSelectedRowDetail(row)}
+                          className="h-7 w-7 rounded-full hover:bg-[#F1F5F9] inline-flex items-center justify-center text-[#64748B] hover:text-[#0F172A] transition-colors"
+                          title="Context drill down"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">visibility</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="p-8 text-center text-[#64748B] font-body-md">
+                {isExecuting ? 'Executing live query against SAP HANA...' : 'No query results found. Type a prompt above and click "Run Query".'}
+              </div>
+            )}
           </div>
         )}
 

@@ -1,5 +1,4 @@
 import React, { useState, useRef } from 'react';
-import { SAMPLE_RECORDS } from '../data/mockData';
 import { uploadDatasetFile } from '../services/uploadService';
 
 interface DatasetIngestionProps {

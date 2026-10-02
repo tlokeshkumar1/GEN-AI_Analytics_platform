@@ -1,4 +1,5 @@
 from typing import Dict, Any, List
+import pandas as pd
 from api.services.data_service import data_service
 from api.utils.logger import get_logger
 

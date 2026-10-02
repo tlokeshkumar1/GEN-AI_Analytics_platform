@@ -66,23 +66,9 @@ async def get_current_user(
     Reads 'Authorization: Bearer <jwt>' token passed by SAP AppRouter.
     Falls back to a default mock user in local development mode.
     """
-    # 1. Local Development Fallback
-    vcap_services = os.environ.get("VCAP_SERVICES", "")
-    if not vcap_services or "xsuaa" not in vcap_services:
-        # Dev environment — return default local context
-        logger.debug("[Auth] Running in local dev mode without XSUAA bindings. Using dev user context.")
-        return UserContext(
-            user_id="dev-user-001",
-            email="developer@enterprise.sap",
-            name="Developer User",
-            scopes=["$XSAPPNAME.User", "$XSAPPNAME.Admin"],
-            roles=["UserRole", "AdminRole"],
-        )
-
-    # 2. XSUAA Authentication in Cloud Foundry
     if not auth or not auth.credentials:
-        logger.warning("[Auth] Missing Authorization header in production request.")
-        raise HTTPException(status_code=401, detail="Authentication token required (SAP XSUAA)")
+        logger.warning("[Auth] Missing Authorization header in request.")
+        raise HTTPException(status_code=401, detail="Authentication token required (SAP BTP IAS / XSUAA)")
 
     token = auth.credentials
     claims = parse_jwt_unverified(token)
@@ -99,10 +85,10 @@ async def get_current_user(
 
     xsappname = claims.get("xsappname", "gen-ai-analytics-platform")
     roles = []
-    if f"{xsappname}.User" in scopes:
-        roles.append("UserRole")
+    if f"{xsappname}.Member" in scopes or f"{xsappname}.User" in scopes:
+        roles.append("Member")
     if f"{xsappname}.Admin" in scopes:
-        roles.append("AdminRole")
+        roles.append("Admin")
 
     return UserContext(
         user_id=user_id,

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import {
-  TOP_PRODUCTS,
-  REGIONAL_MARKET_SHARE,
-  TOP_REVENUE_COUNTRIES,
-  PRODUCT_CATEGORIES,
-  QUARTERLY_TARGETS,
-  ProductSKU,
-} from '../data/mockData';
 import { fetchDashboardData, DashboardData } from '../services/dashboardService';
+
+export interface ProductSKU {
+  id: string;
+  name: string;
+  category: string;
+  revenue: number;
+  margin: number;
+  growth: number;
+  status: string;
+}
 
 interface ExecutiveDashboardProps {
   onNavigate: (path: string) => void;
@@ -173,7 +175,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
 
   // ── Requirement 2: Top Revenue by Country (Sorted Descending, Dynamic Limits)
   const sortedCountries = useMemo(() => {
-    const raw = liveData?.country_breakdown ?? TOP_REVENUE_COUNTRIES.map(c => ({ country: c.country, revenue: c.revenueNum * 1e6 }));
+    const raw = liveData?.country_breakdown ?? [];
     return [...raw].sort((a, b) => b.revenue - a.revenue);
   }, [liveData]);
 
@@ -187,7 +189,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
 
   // ── Requirement 2: Product Category Revenue (Sorted Descending, Dynamic Limits)
   const sortedCategories = useMemo(() => {
-    const raw = liveData?.category_breakdown ?? PRODUCT_CATEGORIES.map(c => ({ category: c.category, revenue: c.revenueNum * 1e6 }));
+    const raw = liveData?.category_breakdown ?? [];
     return [...raw].sort((a, b) => b.revenue - a.revenue);
   }, [liveData]);
 
@@ -199,11 +201,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
   // ── Requirement 3: Vertical Quarterly Targets vs Actual ───────────────────
   const availableQuarterYears = useMemo(() => {
     const yearsSet = new Set<string>();
-    const list = liveData?.quarterly_performance ?? QUARTERLY_TARGETS.map(q => ({
-      quarter: q.quarter,
-      target: parseFloat(q.actualVsTarget.split('/')[1]?.replace(/[$ M,]/g, '')) * 1e6 || 0,
-      actual: parseFloat(q.actualVsTarget.split('/')[0]?.replace(/[$ M,]/g, '')) * 1e6 || 0,
-    }));
+    const list = liveData?.quarterly_performance ?? [];
     list.forEach(q => {
       const match = q.quarter.match(/\b(20\d{2})\b/);
       if (match) yearsSet.add(match[1]);
@@ -213,11 +211,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
   }, [liveData]);
 
   const filteredQuarters = useMemo(() => {
-    const list = liveData?.quarterly_performance ?? QUARTERLY_TARGETS.map(q => ({
-      quarter: q.quarter,
-      target: parseFloat(q.actualVsTarget.split('/')[1]?.replace(/[$ M,]/g, '')) * 1e6 || 0,
-      actual: parseFloat(q.actualVsTarget.split('/')[0]?.replace(/[$ M,]/g, '')) * 1e6 || 0,
-    }));
+    const list = liveData?.quarterly_performance ?? [];
     if (selectedQuarterYear === 'All') return list;
     return list.filter(q => q.quarter.includes(selectedQuarterYear));
   }, [liveData, selectedQuarterYear]);
@@ -249,24 +243,21 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
   const totalQuarterAttainment = totalQuarterTarget > 0 ? (totalQuarterActual / totalQuarterTarget) * 100 : 0;
 
   // ── Requirement 4: Top Performing Products Leaderboard ────────────────────
-  const liveProducts: ProductSKU[] = useMemo(() => {
-    const rawList = liveData?.top_products && liveData.top_products.length > 0
-      ? liveData.top_products.map((p, idx) => ({
-        id: `live-prod-${idx}`,
-        name: p.product,
-        category: 'Industrial Fleet',
-        unitsSold: p.units,
-        netRevenue: p.revenue,
-        netRevenueFormatted: p.revenue >= 1e6 ? `$${(p.revenue / 1e6).toFixed(1)}M` : `$${p.revenue.toLocaleString()}`,
-        volumeWeight: Math.min(100, Math.round((p.revenue / Math.max(...(liveData.top_products.map(tp => tp.revenue) ?? [1]))) * 100)),
-        marginStatus: [48.2, 41.0, 45.7, 43.5, 34.8, 38.4, 36.1, 42.0, 39.5, 44.1, 37.8, 46.2, 40.5, 48.0, 35.6, 39.0, 47.1, 41.8, 38.0, 43.2, 36.5, 42.8, 40.0, 45.0, 37.0, 44.5, 39.2, 46.0, 35.0, 41.5, 38.8, 43.0, 36.0, 42.5, 47.5][idx % 35],
-        statusColor: ['bg-[#7C3AED]', 'bg-[#2563EB]', 'bg-[#6366F1]', 'bg-[#0F766E]', 'bg-[#0891B2]', 'bg-[#4F46E5]', 'bg-[#3B82F6]'][idx % 7],
-        skuCode: `SKU-${idx + 1}`,
-        region: 'Global',
-      }))
-      : TOP_PRODUCTS;
+  const liveProducts: any[] = useMemo(() => {
+    const rawList = (liveData?.top_products ?? []).map((p, idx) => ({
+      id: `live-prod-${idx}`,
+      name: p.product,
+      category: 'Industrial Fleet',
+      unitsSold: p.units,
+      netRevenue: p.revenue,
+      netRevenueFormatted: p.revenue >= 1e6 ? `$${(p.revenue / 1e6).toFixed(1)}M` : `$${p.revenue.toLocaleString()}`,
+      volumeWeight: Math.min(100, Math.round((p.revenue / Math.max(...((liveData?.top_products ?? []).map(tp => tp.revenue) ?? [1]))) * 100)),
+      marginStatus: 42.0,
+      statusColor: ['bg-[#7C3AED]', 'bg-[#2563EB]', 'bg-[#6366F1]', 'bg-[#0F766E]', 'bg-[#0891B2]', 'bg-[#4F46E5]', 'bg-[#3B82F6]'][idx % 7],
+      skuCode: `SKU-${idx + 1}`,
+      region: 'Global',
+    }));
 
-    // Keep products sorted by revenue from highest to lowest
     return [...rawList].sort((a, b) => b.netRevenue - a.netRevenue);
   }, [liveData]);
 
@@ -828,7 +819,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ onNaviga
 
             {/* Ranked Regional Distribution Rows */}
             <div className="flex flex-col gap-space-md">
-              {(liveData?.region_breakdown ?? REGIONAL_MARKET_SHARE.map(r => ({ region: r.name, revenue: parseFloat(r.revenue.replace(/[$M,]/g, '')) * 1e6, share: r.percentage }))).map((reg, idx) => {
+              {(liveData?.region_breakdown ?? []).map((reg, idx) => {
                 const regionColors = ['bg-[#2563EB]', 'bg-[#4F46E5]', 'bg-[#0F766E]', 'bg-[#0891B2]', 'bg-[#7C3AED]'];
                 const regName = 'region' in reg ? reg.region : '';
                 const regShare = 'share' in reg ? reg.share : 0;

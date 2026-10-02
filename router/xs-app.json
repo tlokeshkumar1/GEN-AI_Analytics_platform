@@ -7,7 +7,10 @@
       "target": "/api/$1",
       "destination": "backend-api",
       "authenticationType": "xsuaa",
-      "scope": "$XSAPPNAME.User",
+      "scope": [
+        "$XSAPPNAME.Member",
+        "$XSAPPNAME.Admin"
+      ],
       "csrfProtection": false
     },
     {

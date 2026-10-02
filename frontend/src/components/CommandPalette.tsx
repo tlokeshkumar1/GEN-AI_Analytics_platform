@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { SCHEMA_COLUMNS } from '../data/mockData';
 
 interface CommandPaletteProps {
   isOpen: boolean;

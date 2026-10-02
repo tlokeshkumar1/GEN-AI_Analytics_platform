@@ -43,28 +43,56 @@ export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
   const [isSsoLoading, setIsSsoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Enterprise SSO Auth Handler
-  const handleSSORedirect = () => {
+  // State for SAP Universal ID / BTP IAS Auth Modal
+  const [showSsoModal, setShowSsoModal] = useState(false);
+  const [ssoUniversalId, setSsoUniversalId] = useState('');
+  const [ssoPassword, setSsoPassword] = useState('');
+  const [showSsoPassword, setShowSsoPassword] = useState(false);
+
+  // Enterprise SSO Auth Handler - Direct SAP Universal ID / BTP IAS Single Sign-On
+  const handleSSORedirect = async () => {
     setIsSsoLoading(true);
     setError(null);
-    setTimeout(() => {
-      setIsSsoLoading(false);
-      if (onSignInSuccess) {
-        onSignInSuccess({
-          user_id: 'usr_btp_ias_9941',
-          email: 'lokesh.kumar@neovatic.corp',
-          name: 'Lokesh Kumar',
-          roles: ['SAP_Universal_ID', 'Enterprise_Admin', 'Analytics_Director']
-        });
+
+    try {
+      const ssoToken = localStorage.getItem('sap_ias_sso_token') || localStorage.getItem('auth_token');
+
+      const ssoRes = await fetch(`${apiBaseUrl}/api/auth/sso`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ias_token: ssoToken || undefined,
+          provider: 'sap_btp_ias'
+        })
+      });
+
+      const data = await ssoRes.json();
+
+      if (ssoRes.ok && data.status === 'success' && data.user) {
+        if (data.token) {
+          localStorage.setItem('auth_token', data.token);
+          localStorage.setItem('auth_user', JSON.stringify(data.user));
+        }
+        if (onSignInSuccess) {
+          onSignInSuccess(data.user);
+        }
+      } else {
+        setError(data.detail || 'No active SAP BTP IAS / Universal ID session detected in your browser. Please log into your SAP Portal first or sign in with corporate email and password below.');
       }
-    }, 600);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'SAP BTP IAS Identity Provider service unreachable.';
+      setError(errMsg);
+    } finally {
+      setIsSsoLoading(false);
+    }
   };
 
-  // Direct Credential Auth Submission
+  // Direct Credential Auth Submission (Corporate Email & Password)
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError('Please provide both corporate email and master password.');
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) {
+      setError('Please provide both corporate email address and master password.');
       return;
     }
 
@@ -73,44 +101,41 @@ export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
 
     try {
       let userContext: UserContext | null = null;
+      let token: string | null = null;
+
       try {
-        // 1. Submit Credentials to Auth Endpoint if available
         const loginRes = await fetch(`${apiBaseUrl}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, rememberMe })
+          body: JSON.stringify({ email: cleanEmail, password, rememberMe })
         });
 
-        if (loginRes.ok) {
-          // 2. Fetch User Context and Claims
-          const meRes = await fetch(`${apiBaseUrl}/api/auth/me`, {
-            headers: { 'Content-Type': 'application/json' }
-          });
+        const data = await loginRes.json();
 
-          if (meRes.ok) {
-            userContext = await meRes.json();
-          }
+        if (loginRes.ok && data.status === 'success') {
+          userContext = data.user;
+          token = data.token;
+        } else {
+          setError(data.detail || 'Invalid corporate email or password. Access denied.');
+          setIsLoading(false);
+          return;
         }
       } catch {
-        // API offline fallback
+        setError('Authentication service unreachable. Valid SAP BTP IAS token or credentials required.');
+        setIsLoading(false);
+        return;
       }
 
-      // If backend API isn't present, authenticate smoothly with corporate credentials
-      if (!userContext) {
-        const formattedName = email.split('@')[0]
-          .replace(/[._-]/g, ' ')
-          .replace(/\b\w/g, l => l.toUpperCase());
-
-        userContext = {
-          user_id: 'usr_btp_' + Math.random().toString(36).substring(2, 9),
-          email,
-          name: formattedName || 'Enterprise User',
-          roles: ['Enterprise_Admin', 'Analytics_Director', 'XSUAA_Viewer']
-        };
-      }
-
-      if (onSignInSuccess) {
-        onSignInSuccess(userContext);
+      if (userContext) {
+        if (token) {
+          localStorage.setItem('auth_token', token);
+          localStorage.setItem('auth_user', JSON.stringify(userContext));
+        }
+        if (onSignInSuccess) {
+          onSignInSuccess(userContext);
+        }
+      } else {
+        setError('Authentication failed. Invalid corporate credentials.');
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Authentication service temporarily unreachable.';

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -21,16 +21,43 @@ import { SystemSettings } from './screens/SystemSettings';
 import { EnterpriseSignIn, UserContext } from './screens/EnterpriseSignIn';
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
-  const [currentUser, setCurrentUser] = useState<UserContext | null>({
-    user_id: 'usr_dir_781',
-    email: 'lokeshkumartelagamalla@gmail.com',
-    name: 'Lokesh Kumar',
-    roles: ['Enterprise_Admin', 'Analytics_Director']
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
   const [activePath, setActivePath] = useState<string>('executive-dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+
+    if (!token) {
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+      return;
+    }
+
+    fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then((res) => {
+        if (res.ok) return res.json();
+        throw new Error('Not authenticated');
+      })
+      .then((user: UserContext) => {
+        if (user && (user.user_id || user.email)) {
+          setCurrentUser(user);
+          setIsAuthenticated(true);
+        } else {
+          throw new Error('Invalid user context');
+        }
+      })
+      .catch(() => {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_user');
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+      });
+  }, []);
 
   const [customGraphPrompt, setCustomGraphPrompt] = useState<string>(
     'Show monthly Net Revenue and Gross Margin comparison across 2024 and 2025 as a dual-axis trendline with milestone annotations'
@@ -43,7 +70,17 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => {});
+    }
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
     setIsAuthenticated(false);
+    setCurrentUser(null);
     setActivePath('enterprise-signin');
     setSidebarOpen(false);
   };
