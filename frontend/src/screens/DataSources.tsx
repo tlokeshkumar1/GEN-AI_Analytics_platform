@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { fetchHealthStatus } from '../services/healthService';
 
 interface DataSourcesProps {
   onNavigate: (path: string) => void;
@@ -54,12 +55,30 @@ export const DataSources: React.FC<DataSourcesProps> = ({ onNavigate }) => {
 
   const [testingId, setTestingId] = useState<string | null>(null);
 
-  const testConnection = (id: string) => {
+  const testConnection = async (id: string) => {
     setTestingId(id);
-    setTimeout(() => {
+    const startTime = Date.now();
+    try {
+      const health = await fetchHealthStatus();
+      const elapsed = Date.now() - startTime;
+      setSources(prev => prev.map(s => {
+        if (s.id === id) {
+          const isHana = id === 'src-1' || id === 'src-2';
+          const isConnected = isHana ? health.hana_connected : health.ai_core_connected;
+          return {
+            ...s,
+            status: isConnected ? 'Connected' : 'Reconnecting',
+            lastSync: 'Just now',
+            latency: `${elapsed}ms`
+          };
+        }
+        return s;
+      }));
+    } catch {
+      setSources(prev => prev.map(s => s.id === id ? { ...s, status: 'Reconnecting', lastSync: 'Just now' } : s));
+    } finally {
       setTestingId(null);
-      setSources(prev => prev.map(s => s.id === id ? { ...s, lastSync: 'Just now', latency: '11ms' } : s));
-    }, 700);
+    }
   };
 
   return (

@@ -33,7 +33,7 @@ export interface EnterpriseSignInProps {
 export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
   onSignInSuccess,
   apiBaseUrl = '',
-  ssoRedirectUrl = '/login'
+  ssoRedirectUrl = '/'
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -43,94 +43,11 @@ export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
   const [isSsoLoading, setIsSsoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // State for SAP Universal ID / BTP IAS Auth Modal
-  const [showSsoModal, setShowSsoModal] = useState(false);
-  const [ssoUniversalId, setSsoUniversalId] = useState('');
-  const [ssoPassword, setSsoPassword] = useState('');
-  const [showSsoPassword, setShowSsoPassword] = useState(false);
-  const [ssoError, setSsoError] = useState<string | null>(null);
-
-  // Enterprise SSO Auth Handler - Direct SAP Universal ID / BTP IAS Single Sign-On
-  const handleSSORedirect = async () => {
+  // The protected AppRouter entry point starts SAP's hosted SSO flow.
+  const handleSSORedirect = () => {
     setIsSsoLoading(true);
     setError(null);
-
-    const ssoToken = localStorage.getItem('sap_ias_sso_token') || localStorage.getItem('auth_token');
-
-    if (ssoToken) {
-      try {
-        const ssoRes = await fetch(`${apiBaseUrl}/api/auth/sso`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ias_token: ssoToken,
-            provider: 'sap_btp_ias'
-          })
-        });
-
-        const data = await ssoRes.json();
-
-        if (ssoRes.ok && data.status === 'success' && data.user) {
-          if (data.token) {
-            localStorage.setItem('auth_token', data.token);
-            localStorage.setItem('auth_user', JSON.stringify(data.user));
-          }
-          if (onSignInSuccess) {
-            onSignInSuccess(data.user);
-          }
-          setIsSsoLoading(false);
-          return;
-        }
-      } catch {
-        // Fallback to modal if stored token check fails
-      }
-    }
-
-    setIsSsoLoading(false);
-    setShowSsoModal(true);
-  };
-
-  const handleSsoModalSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    const cleanId = ssoUniversalId.trim();
-    if (!cleanId || !ssoPassword) {
-      setSsoError('Please enter your SAP Universal ID / Email and Passcode.');
-      return;
-    }
-
-    setIsSsoLoading(true);
-    setSsoError(null);
-
-    try {
-      const ssoRes = await fetch(`${apiBaseUrl}/api/auth/sso`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          universal_id_or_email: cleanId,
-          password_or_passcode: ssoPassword,
-          provider: 'sap_btp_ias'
-        })
-      });
-
-      const data = await ssoRes.json();
-
-      if (ssoRes.ok && data.status === 'success' && data.user) {
-        if (data.token) {
-          localStorage.setItem('auth_token', data.token);
-          localStorage.setItem('auth_user', JSON.stringify(data.user));
-        }
-        setShowSsoModal(false);
-        if (onSignInSuccess) {
-          onSignInSuccess(data.user);
-        }
-      } else {
-        setSsoError(data.detail || 'SAP Universal ID / BTP IAS authentication failed. Invalid credentials or passcode.');
-      }
-    } catch {
-      setSsoError('SAP BTP IAS authentication service unreachable.');
-    } finally {
-      setIsSsoLoading(false);
-    }
+    window.location.assign(ssoRedirectUrl);
   };
 
   // Direct Credential Auth Submission (Corporate Email & Password)
@@ -945,98 +862,7 @@ export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
         </div>
       </div>
 
-      {/* SAP Universal ID / BTP IAS SSO Modal */}
-      {showSsoModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-[#FCFCFB] border border-[#E7E7E4] rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-4 border-b border-[#EEEEEB] mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#111111] text-white flex items-center justify-center">
-                  <KeyRound size={18} />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-[17px] text-[#111111]">SAP Universal ID / BTP IAS</h3>
-                  <p className="text-xs text-[#777777]">Single Sign-On Authentication</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setShowSsoModal(false); setSsoError(null); }}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-[#777777] hover:bg-[#ECEBE8] hover:text-[#111111] transition-colors"
-              >
-                ✕
-              </button>
-            </div>
 
-            {ssoError && (
-              <div className="auth-error-banner mb-4">
-                <AlertCircle size={17} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div>{ssoError}</div>
-              </div>
-            )}
-
-            <form onSubmit={handleSsoModalSubmit}>
-              <div className="form-group">
-                <label className="form-label">SAP Universal ID or Corporate Email</label>
-                <div className="input-relative-wrap">
-                  <Mail size={16} className="input-icon-left" />
-                  <input
-                    type="text"
-                    className="enterprise-input"
-                    placeholder="S-User ID, Universal ID, or email"
-                    value={ssoUniversalId}
-                    onChange={(e) => setSsoUniversalId(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">IAS Passcode or Password</label>
-                <div className="input-relative-wrap">
-                  <Lock size={16} className="input-icon-left" />
-                  <input
-                    type={showSsoPassword ? 'text' : 'password'}
-                    className="enterprise-input"
-                    placeholder="••••••••••••"
-                    value={ssoPassword}
-                    onChange={(e) => setSsoPassword(e.target.value)}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="input-btn-right"
-                    onClick={() => setShowSsoPassword(!showSsoPassword)}
-                  >
-                    {showSsoPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => { setShowSsoModal(false); setSsoError(null); }}
-                  className="btn-submit-secondary flex-1"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSsoLoading}
-                  className="btn-sso-primary flex-1"
-                >
-                  {isSsoLoading ? (
-                    <div className="spinner" />
-                  ) : (
-                    <span>Authenticate via IAS</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

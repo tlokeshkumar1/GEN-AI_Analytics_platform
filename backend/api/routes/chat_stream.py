@@ -37,30 +37,9 @@ async def chat_stream(req: ChatRequest, request: Request):
     loop = asyncio.get_event_loop()
 
     # ── Resolve or create session ─────────────────────────────────────────
-    session_id = req.session_id
-    if not session_id or session_id == "default":
-        subject = history_service._generate_subject(req.message)
-        session_id = history_service.create_session(subject=subject)
-    else:
-        # Ensure session exists
-        existing = history_service.get_session_messages(session_id)
-        if not existing:
-            try:
-                from api.database.connection import db_manager
-                from datetime import datetime
-                conn = db_manager.get_connection()
-                if conn:
-                    cursor = conn.cursor()
-                    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                    cursor.execute(
-                        "INSERT INTO CHAT_SESSIONS (SESSION_ID, SUBJECT, CREATED_AT, UPDATED_AT) VALUES (?, ?, ?, ?)",
-                        (session_id, history_service._generate_subject(req.message)[:255], now, now),
-                    )
-                    conn.commit()
-                    cursor.close()
-                    db_manager.return_connection(conn)
-            except Exception:
-                pass
+    from api.utils.auth import get_user_id_from_request
+    user_id = get_user_id_from_request(request, req.user_id)
+    session_id = history_service.get_or_create_session(req.session_id, user_id=user_id, first_message=req.message)
 
     # Save user query immediately
     history_service.save_message(
@@ -184,4 +163,12 @@ async def chat_stream(req: ChatRequest, request: Request):
             yield f"data: {json.dumps(err_payload)}\n\n"
             yield f"data: {json.dumps({'type': 'request_completed'})}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

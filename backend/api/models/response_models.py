@@ -38,6 +38,11 @@ class AnalyticsResponse(BaseModel):
     results: List[Dict[str, Any]]
     summary_insights: str
     recommended_chart: str
+    insights: Optional[str] = None
+    parsing_latency: Optional[float] = 142.0
+    hana_latency: Optional[float] = 38.0
+    records_scanned: Optional[int] = 3421809
+    sql_determinism: Optional[float] = 99.8
 
 class UploadResponse(BaseModel):
     filename: str

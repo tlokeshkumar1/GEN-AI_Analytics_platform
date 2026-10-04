@@ -17,6 +17,7 @@
     }
   ],
   "attributes": [],
+  "foreign-scope-references": ["xs_user.read", "xs_authorization.read"],
   "role-templates": [
     {
       "name": "Member",
@@ -32,6 +33,12 @@
       "scope-references": [
         "$XSAPPNAME.Admin"
       ],
+      "attribute-references": []
+    },
+    {
+      "name": "UserManagementReader",
+      "description": "Read project users and their role collections",
+      "scope-references": ["xs_user.read", "xs_authorization.read"],
       "attribute-references": []
     },
     {
@@ -59,6 +66,11 @@
         "$XSAPPNAME.Admin",
         "$XSAPPNAME.Token_Exchange"
       ]
+    },
+    {
+      "name": "GEN-AI Analytics Platform User Management (${space})",
+      "description": "Read-only directory permissions for platform administrators",
+      "role-template-references": ["$XSAPPNAME.UserManagementReader"]
     }
   ],
   "oauth2-configuration": {

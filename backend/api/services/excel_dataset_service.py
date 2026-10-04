@@ -74,8 +74,10 @@ class ExcelDatasetService:
         """Load (or reload) the dataset from disk and update freshness metadata."""
         resolved_path = self._resolve_dataset_path()
         if not resolved_path.exists():
-            logger.error(f"Excel dataset not found at {resolved_path}")
-            raise FileNotFoundError(f"Dataset file not found at {resolved_path}")
+            logger.warning(f"Excel dataset not found at candidate paths. Returning empty DataFrame until uploaded by user.")
+            self._df = pd.DataFrame()
+            self._last_load_time = datetime.now(timezone.utc)
+            return self._df
 
         self._default_path = resolved_path
         logger.info(f"Loading preprocessed Excel dataset from: {self._default_path}")

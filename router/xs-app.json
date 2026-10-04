@@ -3,6 +3,12 @@
   "authenticationMethod": "route",
   "routes": [
     {
+      "source": "^/logged-out\\.html$",
+      "target": "logged-out.html",
+      "localDir": "public",
+      "authenticationType": "none"
+    },
+    {
       "source": "^/api/(.*)$",
       "target": "/api/$1",
       "destination": "backend-api",
@@ -19,6 +25,9 @@
       "localDir": "resources",
       "authenticationType": "xsuaa"
     }
-  ]
+  ],
+  "logout": {
+    "logoutEndpoint": "/logout",
+    "logoutPage": "/logged-out.html"
+  }
 }
-

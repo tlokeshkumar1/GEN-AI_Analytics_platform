@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { generateCustomGraph, GraphResponse } from '../services/graphService';
+import { SCHEMA_COLUMNS } from '../data/schemaData';
 
 const PIPELINE_STEPS = [
   'Schema & Temp Init: Inspecting schema & initializing script runtime…',

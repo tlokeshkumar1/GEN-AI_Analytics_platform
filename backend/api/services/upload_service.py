@@ -45,8 +45,13 @@ class UploadService:
             logger.info(f"Successfully wrote {rows_processed} records to {standard_target}")
             
             # 4. Update cached dataset in memory so queries & dashboard immediately reflect new data
+            from datetime import datetime, timezone
             excel_dataset_service._df = df
             excel_dataset_service._default_path = standard_target
+            stat = standard_target.stat()
+            excel_dataset_service._file_mtime = stat.st_mtime
+            excel_dataset_service._data_as_of = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+            excel_dataset_service._last_load_time = datetime.now(timezone.utc)
             data_service._df = df
             logger.info(f"Updated in-memory dataset cache with {rows_processed} rows from {standard_target}")
 

@@ -33,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
       const res = await fetchHealthStatus();
       setHealthStatus(`HANA: ${res.hana_connected ? 'OK' : 'Disconnected'} · AI Core: ${res.ai_core_connected ? 'OK' : 'Disconnected'}`);
     } catch {
-      setHealthStatus('HANA Vector: MOCK MODE');
+      setHealthStatus('HANA / AI Core: Connection Pending');
     } finally {
       setTimeout(() => {
         setSyncing(false);

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { uploadDatasetFile } from '../services/uploadService';
+import { SAMPLE_RECORDS } from '../data/schemaData';
 
 interface DatasetIngestionProps {
   onNavigate: (path: string) => void;
@@ -223,7 +224,13 @@ ORD-2025-9005,2025-01-15,Latin America,Brazil,Tools & Maintenance,Pneumatic Torq
               Browse Local Files
             </button>
             <button 
-              onClick={() => processSelectedFile(fileName)}
+              onClick={() => {
+                if (fileInputRef.current?.files && fileInputRef.current.files.length > 0) {
+                  processSelectedFile(fileInputRef.current.files[0]);
+                } else {
+                  fileInputRef.current?.click();
+                }
+              }}
               disabled={isSyncing}
               className="h-10 px-6 rounded-xl bg-[#2563EB] text-white font-label-lg text-label-lg hover:bg-[#1D4ED8] transition-colors flex items-center gap-2 shadow-xs disabled:opacity-70" 
               type="button"

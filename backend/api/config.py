@@ -80,6 +80,9 @@ def _get_xsuaa_credentials_from_vcap():
         services = json.loads(vcap_services) if isinstance(vcap_services, str) else vcap_services
         xsuaa_services = services.get("xsuaa", [])
         for svc in xsuaa_services:
+            # The apiaccess binding is for SCIM, not application sign-in.
+            if svc.get("plan") == "apiaccess":
+                continue
             creds = svc.get("credentials", {})
             if creds.get("clientid"):
                 auth_url = creds.get("url", "")
@@ -128,12 +131,12 @@ class Settings(BaseSettings):
     NVIDIA_LLM_URL: str = os.getenv("NVIDIA_LLM_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
 
 
-    # SAP HANA Cloud Configuration (VCAP_SERVICES takes precedence on CF)
-    HANA_ADDRESS: str = _vcap_hana.get("host") or os.getenv("HANA_ADDRESS", "")
-    HANA_PORT: int = _vcap_hana.get("port") or int(os.getenv("HANA_PORT", ""))
-    HANA_USER: str = _vcap_hana.get("user") or os.getenv("HANA_USER", "")
-    HANA_PASSWORD: str = _vcap_hana.get("password") or os.getenv("HANA_PASSWORD", "")
-    HANA_SCHEMA: str = _vcap_hana.get("schema") or os.getenv("HANA_SCHEMA", "")
+    # SAP HANA Cloud Configuration (env vars take precedence to ensure Localhost & CF share identical database user and sessions)
+    HANA_ADDRESS: str = os.getenv("HANA_ADDRESS") or _vcap_hana.get("host", "")
+    HANA_PORT: int = int(os.getenv("HANA_PORT") or _vcap_hana.get("port") or 443)
+    HANA_USER: str = os.getenv("HANA_USER") or _vcap_hana.get("user", "")
+    HANA_PASSWORD: str = os.getenv("HANA_PASSWORD") or _vcap_hana.get("password", "")
+    HANA_SCHEMA: str = os.getenv("HANA_SCHEMA") or _vcap_hana.get("schema", "")
 
     # Application Settings
     APP_ENV: str = os.getenv("APP_ENV", "development")

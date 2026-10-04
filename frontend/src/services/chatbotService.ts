@@ -62,13 +62,13 @@ export interface GenerateGraphResponse {
 
 // ── Session API Functions ────────────────────────────────────────────────────
 
-export const fetchChatSessions = async (): Promise<ChatSession[]> => {
-  const res = await api.get<ChatSession[]>('/chat/sessions');
+export const fetchChatSessions = async (signal?: AbortSignal): Promise<ChatSession[]> => {
+  const res = await api.get<ChatSession[]>('/chat/sessions', { signal });
   return res.data;
 };
 
-export const fetchSessionMessages = async (sessionId: string): Promise<ChatMessageRecord[]> => {
-  const res = await api.get<ChatMessageRecord[]>(`/chat/sessions/${sessionId}`);
+export const fetchSessionMessages = async (sessionId: string, signal?: AbortSignal): Promise<ChatMessageRecord[]> => {
+  const res = await api.get<ChatMessageRecord[]>(`/chat/sessions/${encodeURIComponent(sessionId)}`, { signal });
   return res.data;
 };
 
@@ -110,9 +110,27 @@ export const sendChatMessageStream = async (
   onError: (err: any) => void
 ) => {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const userJson = localStorage.getItem('auth_user');
+    if (userJson) {
+      try {
+        const user = JSON.parse(userJson);
+        if (user?.user_id) {
+          headers['X-User-Id'] = user.user_id;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const response = await fetch('/api/chat/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
+      credentials: 'same-origin',
       body: JSON.stringify({ message, session_id: sessionId }),
     });
 

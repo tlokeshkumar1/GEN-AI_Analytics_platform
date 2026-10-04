@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SCHEMA_COLUMNS } from '../data/schemaData';
 
 interface CommandPaletteProps {
   isOpen: boolean;

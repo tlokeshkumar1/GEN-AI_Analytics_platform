@@ -52,6 +52,7 @@ class ChatHistoryService:
                     cursor.execute("""
                         CREATE TABLE CHAT_SESSIONS (
                             SESSION_ID   VARCHAR(50) PRIMARY KEY,
+                            USER_ID      VARCHAR(100),
                             SUBJECT      VARCHAR(255),
                             CREATED_AT   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             UPDATED_AT   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -61,6 +62,17 @@ class ChatHistoryService:
                 except Exception as e:
                     if "already exists" not in str(e).lower():
                         logger.error(f"Error creating CHAT_SESSIONS: {e}")
+            else:
+                # Ensure USER_ID column exists for schema upgrade
+                try:
+                    cursor.execute("SELECT USER_ID FROM CHAT_SESSIONS WHERE 1=0")
+                except Exception:
+                    logger.info("Upgrading CHAT_SESSIONS table: adding USER_ID column...")
+                    try:
+                        cursor.execute("ALTER TABLE CHAT_SESSIONS ADD (USER_ID VARCHAR(100))")
+                        logger.info("Added USER_ID column to CHAT_SESSIONS.")
+                    except Exception as alter_err:
+                        logger.error(f"Failed to add USER_ID column to CHAT_SESSIONS: {alter_err}")
 
             # CHAT_MESSAGES
             if not table_exists("CHAT_MESSAGES"):
@@ -94,8 +106,33 @@ class ChatHistoryService:
 
     # ── Session Operations ────────────────────────────────────────────────────
 
-    def create_session(self, subject: str = "New Chat") -> str:
-        """Create a new chat session and return its SESSION_ID."""
+    def verify_session_owner(self, session_id: str, user_id: str) -> bool:
+        """Check if a session exists and belongs to the specified user_id."""
+        if not session_id or not user_id:
+            return False
+        conn = db_manager.get_connection()
+        if not conn:
+            return False
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT USER_ID FROM CHAT_SESSIONS WHERE SESSION_ID = ?", (session_id,))
+            row = cursor.fetchone()
+            cursor.close()
+            db_manager.return_connection(conn)
+            if not row:
+                return False
+            session_owner = row[0]
+            # Match user_id or claim legacy unowned sessions (NULL user_id)
+            if session_owner is None or session_owner == user_id:
+                return True
+            return False
+        except Exception as e:
+            db_manager.return_connection(conn)
+            logger.error(f"Error verifying session owner: {e}")
+            return False
+
+    def create_session(self, user_id: str = "default_user", subject: str = "New Chat") -> str:
+        """Create a new chat session owned by user_id and return its SESSION_ID."""
         self.ensure_tables()
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -108,21 +145,31 @@ class ChatHistoryService:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO CHAT_SESSIONS (SESSION_ID, SUBJECT, CREATED_AT, UPDATED_AT) VALUES (?, ?, ?, ?)",
-                (session_id, subject[:255], now, now),
+                "INSERT INTO CHAT_SESSIONS (SESSION_ID, USER_ID, SUBJECT, CREATED_AT, UPDATED_AT) VALUES (?, ?, ?, ?, ?)",
+                (session_id, user_id, subject[:255], now, now),
             )
             conn.commit()
             cursor.close()
             db_manager.return_connection(conn)
-            logger.info(f"Created chat session: {session_id}")
+            logger.info(f"Created chat session: {session_id} for user: {user_id}")
         except Exception as e:
             db_manager.return_connection(conn)
             logger.error(f"Failed to create session: {e}")
 
         return session_id
 
-    def get_all_sessions(self) -> List[Dict[str, Any]]:
-        """Return all chat sessions ordered by most recently updated."""
+    def get_or_create_session(self, session_id: Optional[str], user_id: str, first_message: str) -> str:
+        """Return existing session_id if owned by user_id; otherwise create a new session for user_id."""
+        self.ensure_tables()
+        if session_id and session_id != "default":
+            if self.verify_session_owner(session_id, user_id):
+                return session_id
+
+        subject = self._generate_subject(first_message)
+        return self.create_session(user_id=user_id, subject=subject)
+
+    def get_all_sessions(self, user_id: str = "default_user") -> List[Dict[str, Any]]:
+        """Return chat sessions belonging exclusively to user_id, ordered by most recently updated."""
         self.ensure_tables()
         conn = db_manager.get_connection()
         if not conn:
@@ -131,8 +178,9 @@ class ChatHistoryService:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT SESSION_ID, SUBJECT, CREATED_AT, UPDATED_AT "
-                "FROM CHAT_SESSIONS ORDER BY UPDATED_AT DESC"
+                "SELECT SESSION_ID, USER_ID, SUBJECT, CREATED_AT, UPDATED_AT "
+                "FROM CHAT_SESSIONS WHERE USER_ID = ? ORDER BY UPDATED_AT DESC",
+                (user_id,),
             )
             columns = [col[0] for col in cursor.description]
             rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
@@ -151,11 +199,15 @@ class ChatHistoryService:
             return rows
         except Exception as e:
             db_manager.return_connection(conn)
-            logger.error(f"Failed to fetch sessions: {e}")
+            logger.error(f"Failed to fetch sessions for user {user_id}: {e}")
             return []
 
-    def delete_session(self, session_id: str) -> bool:
-        """Delete a session and all its messages."""
+    def delete_session(self, session_id: str, user_id: Optional[str] = None) -> bool:
+        """Delete a session and all its messages if user owns it."""
+        if user_id and not self.verify_session_owner(session_id, user_id):
+            logger.warning(f"User {user_id} unauthorized to delete session {session_id}")
+            return False
+
         conn = db_manager.get_connection()
         if not conn:
             return False
@@ -261,8 +313,12 @@ class ChatHistoryService:
 
         return message_id
 
-    def get_session_messages(self, session_id: str) -> List[Dict[str, Any]]:
-        """Fetch all messages for a session in chronological order."""
+    def get_session_messages(self, session_id: str, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Fetch all messages for a session in chronological order after checking user ownership."""
+        if user_id and not self.verify_session_owner(session_id, user_id):
+            logger.warning(f"User {user_id} unauthorized to fetch session {session_id}")
+            return []
+
         conn = db_manager.get_connection()
         if not conn:
             return []

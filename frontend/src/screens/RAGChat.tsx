@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
+  sendChatMessage,
   sendChatMessageStream,
   ChatResponse,
   ProcessingStep,
@@ -8,9 +9,11 @@ import {
   deleteChatSession
 } from '../services/chatbotService';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { ThinkingProcess, resolveIntentDetails } from '../components/ThinkingProcess';
 
 interface RAGChatProps {
   onNavigate: (path: string) => void;
+  isActive: boolean;
 }
 
 export interface RetrievedDocument {
@@ -74,8 +77,6 @@ const getGroupForDate = (dateStr?: string): 'Today' | 'Yesterday' | 'Previous 7 
 };
 
 // ── Client-Side Session Tracking (Maintained ONLY on client side, never in HANA/backend) ──
-let clientLastOpenedSessionId: string | null = null;
-let clientThreadsCache: ChatThread[] | null = null;
 
 export const createNewEmptyThread = (): ChatThread => ({
   id: `thread-${Date.now()}`,
@@ -85,107 +86,6 @@ export const createNewEmptyThread = (): ChatThread => ({
   timestamp: 'Just now',
   messages: [],
 });
-
-export interface IntentBadgeConfig {
-  label: string;
-  icon: string;
-  badgeClass: string;
-}
-
-export const getIntentBadge = (msg: ChatMessage): IntentBadgeConfig | null => {
-  if (msg.sender !== 'agent') return null;
-
-  const intentStr = (msg.intent || '').toLowerCase();
-
-  let stepIntent = '';
-  if (msg.processing) {
-    for (const step of msg.processing) {
-      const msgLower = (step.message || '').toLowerCase();
-      const stageLower = (step.stage || '').toLowerCase();
-      if (
-        msgLower.includes('intent:') ||
-        msgLower.includes('intent detected:') ||
-        msgLower.includes('intent identified:')
-      ) {
-        stepIntent = msgLower;
-        break;
-      }
-      if (stageLower.includes('intent')) {
-        stepIntent = msgLower || stageLower;
-        break;
-      }
-    }
-  }
-
-  const combined = `${intentStr} ${stepIntent} ${msg.text || ''}`.toLowerCase();
-
-  // 1. Order Lookup (Blue badge)
-  if (
-    intentStr.includes('order') ||
-    stepIntent.includes('order') ||
-    combined.includes('order so-') ||
-    combined.includes('so-106760') ||
-    combined.includes('106760') ||
-    combined.includes('fulfillment check') ||
-    combined.includes('sales order') ||
-    combined.includes('shipping carrier') ||
-    combined.includes('s/4hana sales')
-  ) {
-    return {
-      label: 'Order Lookup',
-      icon: '📦',
-      badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
-    };
-  }
-
-  // 2. HANA Vector Search (Teal badge)
-  if (
-    intentStr.includes('vector') ||
-    intentStr.includes('search') ||
-    intentStr.includes('hana') ||
-    stepIntent.includes('vector') ||
-    combined.includes('3,248 sap hana vector') ||
-    combined.includes('vector embeddings') ||
-    combined.includes('vector store') ||
-    combined.includes('vector search') ||
-    (msg.retrievedDocs && msg.retrievedDocs.length > 0 && !msg.chartData && !msg.graph_image)
-  ) {
-    return {
-      label: 'HANA Vector Search',
-      icon: '🔍',
-      badgeClass: 'bg-teal-50 text-teal-700 border-teal-200',
-    };
-  }
-
-  // 3. Analytics & Graph (Indigo badge)
-  if (
-    msg.graph_image ||
-    msg.chartData ||
-    intentStr.includes('graph') ||
-    intentStr.includes('analytic') ||
-    stepIntent.includes('graph') ||
-    stepIntent.includes('analytic') ||
-    combined.includes('chart') ||
-    combined.includes('margin') ||
-    combined.includes('revenue') ||
-    combined.includes('kpi') ||
-    combined.includes('variance') ||
-    combined.includes('gross profit')
-  ) {
-    return {
-      label: 'Analytics & Graph',
-      icon: '📊',
-      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    };
-  }
-
-  // Default fallback for assistant messages:
-  return {
-    label: 'Analytics & Graph',
-    icon: '📊',
-    badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  };
-};
 
 export const formatStageTitle = (stage: string): string => {
   switch (stage) {
@@ -212,15 +112,15 @@ export const formatStageTitle = (stage: string): string => {
   }
 };
 
-export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
+export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
   // Model and input state
   const [inputText, setInputText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchThreads, setSearchThreads] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Sidebar visibility state (user collapsible) — starts toggled off by default
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  // Keep session summaries visible when the user opens RAG Chat.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
   // Three-dot menu and modal states
@@ -233,16 +133,11 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
   // Expanded document source cards per message
   const [expandedDocMessageId, setExpandedDocMessageId] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
-
-  // Collapsible Pipeline Execution Audit Drawer state per message (collapsed by default once completed)
-  const [expandedPipelineMsgIds, setExpandedPipelineMsgIds] = useState<Record<string, boolean>>({});
-
-  const togglePipelineDrawer = (messageId: string) => {
-    setExpandedPipelineMsgIds(prev => ({
-      ...prev,
-      [messageId]: !prev[messageId],
-    }));
-  };
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [sessionLoadError, setSessionLoadError] = useState<string | null>(null);
+  const [sessionsRetry, setSessionsRetry] = useState(0);
+  const messageRequestRef = useRef<AbortController | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -252,254 +147,32 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  // Initial Seed Threads
-  const INITIAL_SEED_THREADS: ChatThread[] = [
-    {
-      id: 'thread-1',
-      title: 'Margin Drilldown Germany 2024',
-      subtitle: 'Gross margin across top 4 categories',
-      group: 'Today',
-      timestamp: '10:42 AM',
-      messages: [
-        {
-          id: 'msg-1-1',
-          sender: 'user',
-          timestamp: '10:42 AM',
-          userRole: 'You · Analytics Director',
-          text: 'Compare gross profit margin across top 4 product categories for 2024 and provide key risk factors.',
-        },
-        {
-          id: 'msg-1-2',
-          sender: 'agent',
-          timestamp: '10:42 AM',
-          intent: 'analytics_graph',
-          agentMeta: {
-            latency: '0.24s',
-            cosineSim: '0.942',
-            model: 'Llama-3.2 11B',
-          },
-          processing: [
-            { stage: 'intent_classification', status: 'completed', message: 'Intent identified: Analytics & Graph (Gross Margin)' },
-            { stage: 'vector_search', status: 'completed', message: 'Queried SAP HANA vector embeddings (cosine > 0.94)' },
-            { stage: 'sql_execution', status: 'completed', message: 'Executed columnar query on SAP_HANA_SALES_FACT' },
-            { stage: 'final_response', status: 'completed', message: 'Response synthesized via NVIDIA NIM' },
-          ],
-          text: 'Based on the latest HANA vector embeddings from the 2024 FYTD Ledger (SAP_HANA_SALES_FACT), Robotics Automation commands the highest gross profit margin at 48.2%, driven by firmware upgrade attach-rates. Heavy Machinery demonstrates margin compression down to 34.2% due to raw titanium surcharge volatility in Q2.',
-          chartData: {
-            title: 'Gross Profit Margin by Product Category (FY2024 Actuals)',
-            unit: 'Values in % Margin',
-            items: [
-              { label: 'Robotics Automation', value: 48.2, displayValue: '48.2%' },
-              { label: 'Material Handling Systems', value: 41.4, displayValue: '41.4%' },
-              { label: 'Industrial Safety & Sensors', value: 39.8, displayValue: '39.8%' },
-              { label: 'Heavy Machinery & Powertrain', value: 34.2, displayValue: '34.2%' },
-            ],
-          },
-          riskFactors: [
-            {
-              title: 'Raw Material Exposure',
-              desc: 'Heavy Machinery margin is vulnerable to ongoing nickel and hydraulic valve pricing in the EMEA supply chain (-180 bps YoY).',
-            },
-            {
-              title: 'Aftermarket SaaS Growth',
-              desc: 'Robotics software license renewals yielded an auxiliary contribution margin of 62%, buffering hardware delivery delays.',
-            },
-            {
-              title: 'Freight Surcharges',
-              desc: 'Material Handling trans-pacific maritime shipping added $1.2M in unbilled landed costs across Q2.',
-            },
-          ],
-          sources: 'SAP_HANA_SALES_FACT (2,418 rows evaluated) · Vector Cosine Similarity: 0.942 · HANA Cloud Tenant us10',
-          retrievedDocs: [
-            {
-              id: 'doc-1',
-              source: 'SAP_HANA_SALES_FACT.COLUMNAR',
-              tableOrCollection: 'SAP_HANA_SALES_FACT',
-              snippet: 'SELECT category_name, SUM(revenue), SUM(gross_profit), AVG(margin_pct) FROM sales_fact WHERE fiscal_year = 2024 GROUP BY category_name ORDER BY margin_pct DESC',
-              relevanceScore: 0.962,
-              timestamp: 'Partition: FY2024_Q3_STAGING',
-            },
-            {
-              id: 'doc-2',
-              source: 'COMMODITY_SURCHARGE_INDEX_2024.PDF',
-              tableOrCollection: 'V_SUPPLY_CHAIN_RISK',
-              snippet: 'EMEA raw titanium and nickel surcharges rose 14.2% between April and June, reducing gross contribution margin on Heavy Machinery by 180 bps.',
-              relevanceScore: 0.938,
-              timestamp: 'Indexed 4h ago',
-            },
-            {
-              id: 'doc-3',
-              source: 'CRM_AFTERMARKET_RENEWALS.CSV',
-              tableOrCollection: 'RECURRING_SAAS_FACT',
-              snippet: 'Robotics software license renewals attach rate hit 78.4% with auxiliary contribution margin of 62.1%, buffering hardware delivery delays.',
-              relevanceScore: 0.915,
-              timestamp: 'Indexed yesterday',
-            },
-          ],
-        },
-      ],
-    },
-    {
-      id: 'thread-2',
-      title: 'Regional Revenue Forecast Q3',
-      subtitle: 'Projection scenario with 8.4% drift',
-      group: 'Today',
-      timestamp: '9:15 AM',
-      messages: [
-        {
-          id: 'msg-2-1',
-          sender: 'user',
-          timestamp: '9:15 AM',
-          userRole: 'You · Analytics Director',
-          text: 'What are the regional revenue distributions across North America, EMEA, APAC, and LATAM for the current fiscal cycle?',
-        },
-        {
-          id: 'msg-2-2',
-          sender: 'agent',
-          timestamp: '9:15 AM',
-          intent: 'analytics_graph',
-          agentMeta: {
-            latency: '0.19s',
-            cosineSim: '0.961',
-            model: 'Llama-3.2 11B',
-          },
-          processing: [
-            { stage: 'intent_classification', status: 'completed', message: 'Intent identified: Analytics & Graph (Regional Distribution)' },
-            { stage: 'vector_search', status: 'completed', message: 'Retrieved 3,420 regional ledger partitions' },
-            { stage: 'sql_execution', status: 'completed', message: 'Aggregated regional partition records in SAP HANA' },
-            { stage: 'final_response', status: 'completed', message: 'Synthesized regional projection breakdown' },
-          ],
-          text: 'Evaluated 3,420 regional ledger partitions in SAP HANA. North America continues to lead total volume at $82.4M (44.7% share), with EMEA growing rapidly at +18% YoY driven by enterprise industrial agreements.',
-          chartData: {
-            title: 'Net Revenue Distribution by Global Region',
-            unit: 'Net Sales ($M)',
-            items: [
-              { label: 'North America', value: 44.7, displayValue: '$82.4M (44.7%)' },
-              { label: 'Europe (EMEA)', value: 29.4, displayValue: '$54.1M (29.4%)' },
-              { label: 'Asia-Pacific (APAC)', value: 17.8, displayValue: '$32.8M (17.8%)' },
-              { label: 'Latin America (LATAM)', value: 8.1, displayValue: '$14.9M (8.1%)' },
-            ],
-          },
-          sources: 'SAP_HANA_REGIONAL_SALES (3,420 rows evaluated) · Vector Cosine Similarity: 0.961',
-          retrievedDocs: [
-            {
-              id: 'doc-201',
-              source: 'SAP_HANA_REGIONAL_LEDGER_2025.VIEW',
-              tableOrCollection: 'V_REGIONAL_CONSOLIDATION',
-              snippet: 'Consolidated Net Revenue by Operating Theatre: NA $82.4M, EMEA $54.1M, APAC $32.8M, LATAM $14.9M.',
-              relevanceScore: 0.971,
-              timestamp: 'Partition: REGIONAL_FYTD',
-            },
-          ],
-        },
-      ],
-    },
-    {
-      id: 'thread-3',
-      title: 'Order SO-106760 Fulfillment Check',
-      subtitle: 'Line-item fulfillment check & tax delta',
-      group: 'Yesterday',
-      timestamp: 'Yesterday',
-      messages: [
-        {
-          id: 'msg-3-1',
-          sender: 'user',
-          timestamp: 'Yesterday',
-          userRole: 'You · Analytics Director',
-          text: 'Look up Order SO-106760 complete breakdown and tax status.',
-        },
-        {
-          id: 'msg-3-2',
-          sender: 'agent',
-          timestamp: 'Yesterday',
-          intent: 'order_lookup',
-          agentMeta: {
-            latency: '0.21s',
-            cosineSim: '0.975',
-            model: 'Llama-3.2 11B',
-          },
-          processing: [
-            { stage: 'intent_classification', status: 'completed', message: 'Intent identified: Order Lookup (Sales Order SO-106760)' },
-            { stage: 'erp_lookup', status: 'completed', message: 'Queried SAP S/4HANA Sales & Distribution ERP' },
-            { stage: 'document_flow', status: 'completed', message: 'Verified 3 fulfilled line items and tax status' },
-            { stage: 'final_response', status: 'completed', message: 'Synthesized order status and line-item breakdown' },
-          ],
-          text: 'Retrieved Order SO-106760 from SAP S/4HANA Sales & Distribution document flow. 3 items shipped, 1 in fulfillment staging. Realized margin is 44.2%, with automated tax compliance verified for Germany (MwSt 19%).',
-          chartData: {
-            title: 'Line Item Allocation for Order SO-106760',
-            unit: 'Order Amount ($USD)',
-            items: [
-              { label: 'Item 10: X-400 Robotic Arm', value: 65, displayValue: '$240,000' },
-              { label: 'Item 20: Firmware Enterprise Pack', value: 20, displayValue: '$14,500' },
-              { label: 'Item 30: Proximity Sensors Matrix', value: 15, displayValue: '$9,800' },
-            ],
-          },
-          sources: 'SAP_S4HANA_SD_ORDERS (Document SO-106760) · Vector Similarity: 0.975',
-        },
-      ],
-    },
-    {
-      id: 'thread-4',
-      title: 'Robotics BOM Component Variance',
-      subtitle: 'Cost run on pneumatic sub-assemblies',
-      group: 'Previous 7 Days',
-      timestamp: 'Sep 22',
-      messages: [],
-    },
-    {
-      id: 'thread-5',
-      title: 'Tier-1 Vendor Lead Time Analysis',
-      subtitle: 'Average lead times by plant location',
-      group: 'Previous 7 Days',
-      timestamp: 'Sep 19',
-      messages: [],
-    },
-  ];
-
   // ── Session State Initialization ──────────────────────────────────────────
-  // 1) First-time opening: ALWAYS display a new chat session by default.
+  // 1) First-time opening: ALWAYS display a new empty chat session by default.
   // 2) If the user opens an existing session and navigates away and returns:
   //    automatically display the last chat session that the user had opened.
-  // 3) Maintained strictly on the client side (never stored in HANA or backend).
-  const [threads, setThreads] = useState<ChatThread[]>(() => {
-    if (clientThreadsCache) {
-      return clientThreadsCache;
-    }
-    // First-time opening: create a new empty chat session at the top of the list
-    const newEmptyThread = createNewEmptyThread();
-    const initialList = [newEmptyThread, ...INITIAL_SEED_THREADS];
-    clientThreadsCache = initialList;
-    return initialList;
-  });
+  // 3) Loads real sessions exclusively from SAP HANA Cloud via backend APIs (no mock/seed threads).
+  const [threads, setThreads] = useState<ChatThread[]>(() => [createNewEmptyThread()]);
+  const [activeThreadId, setActiveThreadId] = useState<string>(() => threads[0].id);
+  const draftIds = useRef(new Set([threads[0].id]));
 
-  const [activeThreadId, setActiveThreadId] = useState<string>(() => {
-    if (clientLastOpenedSessionId) {
-      // Returning after navigation: automatically display the last chat session the user had opened
-      const available = clientThreadsCache || INITIAL_SEED_THREADS;
-      if (available.some(t => t.id === clientLastOpenedSessionId)) {
-        return clientLastOpenedSessionId;
-      }
-    }
-    // First-time opening: display the new empty chat session by default
-    const firstThread = (clientThreadsCache || [])[0];
-    return firstThread ? firstThread.id : `thread-${Date.now()}`;
-  });
-
-  // Keep client-side cache in sync when threads change
-  useEffect(() => {
-    clientThreadsCache = threads;
-  }, [threads]);
+  useEffect(() => () => messageRequestRef.current?.abort(), []);
 
   // Currently active thread
   const activeThread = threads.find(t => t.id === activeThreadId) || threads[0] || null;
   const messages = activeThread?.messages || [];
 
-  // Fetch backend chat sessions on mount (loads real chat history from SAP HANA Cloud)
+  // Fetch only session summaries when the user opens RAG Chat.
   useEffect(() => {
+    if (!isActive) return;
+    const controller = new AbortController();
+    setLoadingSessions(true);
+    setSessionsError(null);
     const loadSessionsFromBackend = async () => {
       try {
-        const sessions = await fetchChatSessions();
-        if (sessions && sessions.length > 0) {
+        const sessions = await fetchChatSessions(controller.signal);
+        if (controller.signal.aborted) return;
+        if (sessions && Array.isArray(sessions)) {
           const loadedThreads: ChatThread[] = sessions.map(s => {
             const group = getGroupForDate(s.UPDATED_AT || s.CREATED_AT);
             let timeDisplay = 'Recently';
@@ -520,150 +193,139 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
             };
           });
 
-          // Place empty draft "New Conversation" at top and append real backend sessions
+          // Keep drafts and already loaded messages; never open a saved session automatically.
           setThreads(prev => {
-            let emptyDraft = prev.find(t => t.title === 'New Conversation' && t.messages.length === 0);
-            if (!emptyDraft) {
-              emptyDraft = createNewEmptyThread();
-            }
-            const initialList = [emptyDraft, ...loadedThreads];
-            clientThreadsCache = initialList;
-
-            // First-time opening: default to the new empty chat session
-            if (!clientLastOpenedSessionId || !sessions.some(s => s.SESSION_ID === clientLastOpenedSessionId)) {
-              setActiveThreadId(emptyDraft.id);
-              clientLastOpenedSessionId = emptyDraft.id;
-            }
-            return initialList;
-          });
-
-          // If returning user had opened a specific existing session, load its messages
-          if (clientLastOpenedSessionId && sessions.some(s => s.SESSION_ID === clientLastOpenedSessionId)) {
-            setActiveThreadId(clientLastOpenedSessionId);
-            setLoadingSessionId(clientLastOpenedSessionId);
-            loadThreadMessages(clientLastOpenedSessionId).finally(() => {
-              setLoadingSessionId(null);
+            const ids = new Set(loadedThreads.map(thread => thread.id));
+            const localThreads = prev.filter(thread => !ids.has(thread.id));
+            const savedThreads = loadedThreads.map(thread => {
+              const existing = prev.find(item => item.id === thread.id);
+              if (existing) return { ...thread, title: existing.title, subtitle: existing.subtitle, messages: existing.messages };
+              return thread;
             });
-          }
+            ids.forEach(id => draftIds.current.delete(id));
+            return [...localThreads, ...savedThreads];
+          });
         }
       } catch (err) {
-        console.error('Error fetching backend chat sessions:', err);
+        if (!controller.signal.aborted) setSessionsError('Unable to load chat sessions. Please retry.');
+      } finally {
+        if (!controller.signal.aborted) setLoadingSessions(false);
       }
     };
     loadSessionsFromBackend();
-  }, []);
+    return () => controller.abort();
+  }, [isActive, sessionsRetry]);
 
   // Fetch full message history for a given session from backend
-  const loadThreadMessages = async (threadId: string) => {
+  const loadThreadMessages = async (threadId: string, signal: AbortSignal) => {
     try {
-      const rawMsgs = await fetchSessionMessages(threadId);
-      if (!rawMsgs || !Array.isArray(rawMsgs)) return;
+      const rawMsgs = await fetchSessionMessages(threadId, signal);
+      if (signal.aborted) return;
+      if (!Array.isArray(rawMsgs)) throw new Error('Invalid conversation response');
 
-      if (rawMsgs.length > 0) {
-        const convertedMsgs: ChatMessage[] = rawMsgs.map(m => {
-          // Parse SOURCES safely
-          let sourcesArray: any[] = [];
-          if (Array.isArray(m.SOURCES)) {
-            sourcesArray = m.SOURCES;
-          } else if (typeof m.SOURCES === 'string') {
-            try {
-              sourcesArray = JSON.parse(m.SOURCES);
-            } catch {
-              sourcesArray = [];
-            }
+      const convertedMsgs: ChatMessage[] = rawMsgs.map(m => {
+        // Parse SOURCES safely
+        let sourcesArray: any[] = [];
+        if (Array.isArray(m.SOURCES)) {
+          sourcesArray = m.SOURCES;
+        } else if (typeof m.SOURCES === 'string') {
+          try {
+            sourcesArray = JSON.parse(m.SOURCES);
+          } catch {
+            sourcesArray = [];
           }
+        }
 
-          // Parse METADATA safely
-          let metaObj: any = {};
-          if (typeof m.METADATA === 'object' && m.METADATA !== null) {
-            metaObj = m.METADATA;
-          } else if (typeof m.METADATA === 'string') {
-            try {
-              metaObj = JSON.parse(m.METADATA);
-            } catch {
-              metaObj = {};
-            }
+        // Parse METADATA safely
+        let metaObj: any = {};
+        if (typeof m.METADATA === 'object' && m.METADATA !== null) {
+          metaObj = m.METADATA;
+        } else if (typeof m.METADATA === 'string') {
+          try {
+            metaObj = JSON.parse(m.METADATA);
+          } catch {
+            metaObj = {};
           }
+        }
 
-          // Map retrieved docs
-          const retrievedDocs: RetrievedDocument[] = (Array.isArray(sourcesArray) ? sourcesArray : []).map((s: any, idx: number) => {
-            let srcMeta: any = {};
-            if (typeof s.METADATA === 'object' && s.METADATA !== null) {
-              srcMeta = s.METADATA;
-            } else if (typeof s.METADATA === 'string') {
-              try {
-                srcMeta = JSON.parse(s.METADATA);
-              } catch {
-                srcMeta = {};
-              }
-            }
-
-            return {
-              id: s.ID || `doc-${idx}`,
-              source: srcMeta.source || (srcMeta.country ? `Country: ${srcMeta.country}` : (srcMeta.type || 'SAP_HANA_VECTOR_STORE')),
-              tableOrCollection: 'SAP_HANA_VECTOR_DB',
-              snippet: s.TEXT_CHUNK || s.snippet || '',
-              relevanceScore: typeof s.SCORE === 'number' ? Number(s.SCORE.toFixed(3)) : 0.92,
-              timestamp: srcMeta.year ? `Partition: FY${srcMeta.year}` : 'Indexed Chunk',
-            };
-          });
-
-          // Parse timestamp
-          let formattedTime = 'Just now';
-          if (m.TIMESTAMP) {
-            const parsedDate = new Date(m.TIMESTAMP);
-            if (!isNaN(parsedDate.getTime())) {
-              formattedTime = parsedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        // Map retrieved docs
+        const retrievedDocs: RetrievedDocument[] = (Array.isArray(sourcesArray) ? sourcesArray : []).map((s: any, idx: number) => {
+          let srcMeta: any = {};
+          if (typeof s.METADATA === 'object' && s.METADATA !== null) {
+            srcMeta = s.METADATA;
+          } else if (typeof s.METADATA === 'string') {
+            try {
+              srcMeta = JSON.parse(s.METADATA);
+            } catch {
+              srcMeta = {};
             }
           }
 
           return {
-            id: m.MESSAGE_ID || `msg-${Math.random()}`,
-            sender: m.ROLE === 'user' ? 'user' : 'agent',
-            timestamp: formattedTime,
-            userRole: m.ROLE === 'user' ? 'You · Analytics Director' : undefined,
-            text: m.CONTENT,
-            agentMeta: m.ROLE !== 'user' ? {
-              latency: metaObj.latency || '0.22s',
-              cosineSim: metaObj.cosineSim || (retrievedDocs[0]?.relevanceScore ? String(retrievedDocs[0].relevanceScore) : '0.952'),
-              model: metaObj.model || 'GPT-4o / HANA Vector RAG',
-            } : undefined,
-            chartData: metaObj.chartData || (metaObj.chart_type ? {
-              title: `${metaObj.chart_type.toUpperCase()} Analytics Chart`,
-              unit: 'Value',
-              items: [],
-            } : undefined),
-            riskFactors: metaObj.riskFactors || undefined,
-            sources: sourcesArray.length > 0 ? `${sourcesArray.length} RAG sources evaluated` : undefined,
-            retrievedDocs,
-            graph_image: metaObj.graph_image,
-            chart_type: metaObj.chart_type,
-            intent: m.INTENT || metaObj.intent,
-            insights: metaObj.insights,
-            processing: metaObj.processing,
+            id: s.ID || `doc-${idx}`,
+            source: srcMeta.source || (srcMeta.country ? `Country: ${srcMeta.country}` : (srcMeta.type || 'SAP_HANA_VECTOR_STORE')),
+            tableOrCollection: 'SAP_HANA_VECTOR_DB',
+            snippet: s.TEXT_CHUNK || s.snippet || '',
+            relevanceScore: typeof s.SCORE === 'number' ? Number(s.SCORE.toFixed(3)) : 0.92,
+            timestamp: srcMeta.year ? `Partition: FY${srcMeta.year}` : 'Indexed Chunk',
           };
         });
 
-        setThreads(prev =>
-          prev.map(t => {
-            if (t.id === threadId) {
-              const lastUserMsg = [...convertedMsgs].reverse().find(m => m.sender === 'user');
-              const newSubtitle = lastUserMsg?.text
-                ? lastUserMsg.text.slice(0, 42)
-                : (t.subtitle || 'Session conversation');
+        // Parse timestamp
+        let formattedTime = 'Just now';
+        if (m.TIMESTAMP) {
+          const parsedDate = new Date(m.TIMESTAMP);
+          if (!isNaN(parsedDate.getTime())) {
+            formattedTime = parsedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+        }
 
-              return {
-                ...t,
-                subtitle: newSubtitle,
-                messages: convertedMsgs,
-              };
-            }
-            return t;
-          })
-        );
-      }
+        return {
+          id: m.MESSAGE_ID || `msg-${Math.random()}`,
+          sender: m.ROLE === 'user' ? 'user' : 'agent',
+          timestamp: formattedTime,
+          userRole: m.ROLE === 'user' ? 'You · Analytics Director' : undefined,
+          text: m.CONTENT,
+          agentMeta: m.ROLE !== 'user' ? {
+            latency: metaObj.latency || '0.22s',
+            cosineSim: metaObj.cosineSim || (retrievedDocs[0]?.relevanceScore ? String(retrievedDocs[0].relevanceScore) : '0.952'),
+            model: metaObj.model || 'GPT-4o / HANA Vector RAG',
+          } : undefined,
+          chartData: metaObj.chartData || (metaObj.chart_type ? {
+            title: `${metaObj.chart_type.toUpperCase()} Analytics Chart`,
+            unit: 'Value',
+            items: [],
+          } : undefined),
+          riskFactors: metaObj.riskFactors || undefined,
+          sources: sourcesArray.length > 0 ? `${sourcesArray.length} RAG sources evaluated` : undefined,
+          retrievedDocs,
+          graph_image: metaObj.graph_image,
+          chart_type: metaObj.chart_type,
+          intent: m.INTENT || metaObj.intent,
+          insights: metaObj.insights,
+          processing: metaObj.processing,
+        };
+      });
+
+      setThreads(prev =>
+        prev.map(t => {
+          if (t.id === threadId) {
+            const lastUserMsg = [...convertedMsgs].reverse().find(m => m.sender === 'user');
+            const newSubtitle = lastUserMsg?.text
+              ? lastUserMsg.text.slice(0, 42)
+              : (t.subtitle || 'Session conversation');
+
+            return {
+              ...t,
+              subtitle: newSubtitle,
+              messages: convertedMsgs,
+            };
+          }
+          return t;
+        })
+      );
     } catch (err) {
-      console.error('Error in loadThreadMessages:', err);
+      if (!signal.aborted) setSessionLoadError('Unable to open this conversation. Please retry.');
     }
   };
 
@@ -682,24 +344,40 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
   }, []);
 
   const handleSelectThread = async (threadId: string) => {
-    clientLastOpenedSessionId = threadId;
+    if (isSubmitting) return;
+    messageRequestRef.current?.abort();
+    messageRequestRef.current = null;
     setActiveThreadId(threadId);
     setMobileDrawerOpen(false);
+    setSessionLoadError(null);
+    setInputText('');
+    if (draftIds.current.has(threadId)) {
+      setLoadingSessionId(null);
+      return;
+    }
+    const controller = new AbortController();
+    messageRequestRef.current = controller;
     setLoadingSessionId(threadId);
     try {
-      await loadThreadMessages(threadId);
+      await loadThreadMessages(threadId, controller.signal);
     } finally {
-      setLoadingSessionId(null);
+      if (messageRequestRef.current === controller) {
+        messageRequestRef.current = null;
+        setLoadingSessionId(null);
+      }
     }
   };
 
   const handleCreateNewChat = () => {
     const newThread = createNewEmptyThread();
-    clientLastOpenedSessionId = newThread.id;
+    messageRequestRef.current?.abort();
+    messageRequestRef.current = null;
+    setLoadingSessionId(null);
+    setSessionLoadError(null);
+    draftIds.current.add(newThread.id);
 
     setThreads(prev => {
       const updated = [newThread, ...prev];
-      clientThreadsCache = updated;
       return updated;
     });
     setActiveThreadId(newThread.id);
@@ -719,20 +397,17 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
     }
     const remaining = threads.filter(t => t.id !== deletedId);
     setThreads(remaining);
-    clientThreadsCache = remaining;
+    draftIds.current.delete(deletedId);
 
     if (activeThreadId === deletedId) {
-      if (remaining.length > 0) {
-        clientLastOpenedSessionId = remaining[0].id;
-        setActiveThreadId(remaining[0].id);
-        loadThreadMessages(remaining[0].id);
-      } else {
-        const fallback = createNewEmptyThread();
-        clientLastOpenedSessionId = fallback.id;
-        setThreads([fallback]);
-        clientThreadsCache = [fallback];
-        setActiveThreadId(fallback.id);
-      }
+      messageRequestRef.current?.abort();
+      messageRequestRef.current = null;
+      setLoadingSessionId(null);
+      setSessionLoadError(null);
+      const fallback = createNewEmptyThread();
+      draftIds.current.add(fallback.id);
+      setThreads([fallback, ...remaining]);
+      setActiveThreadId(fallback.id);
     }
 
     setThreadToDelete(null);
@@ -753,7 +428,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
   };
 
   const handleSendMessage = () => {
-    if (!inputText.trim() || isSubmitting) return;
+    if (!inputText.trim() || isSubmitting || loadingSessionId || sessionLoadError) return;
 
     const query = inputText.trim();
     setInputText('');
@@ -806,8 +481,8 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate }) => {
             initialIntent === 'order_lookup'
               ? 'Detecting intent: Order Lookup...'
               : initialIntent === 'hana_vector_search'
-                ? 'Detecting intent: HANA Vector Search...'
-                : 'Detecting intent: Analytics & Graph...',
+              ? 'Detecting intent: HANA Vector Search...'
+              : 'Detecting intent: Analytics & Graph...',
         },
       ],
       isStreaming: true,
@@ -1196,8 +871,39 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
       handleStep,
       handleToken,
       handleResult,
-      (_err: any) => {
-        executeFallbackSimulation();
+      async (_err: any) => {
+        try {
+          const res = await sendChatMessage(query, activeThreadId);
+          handleResult(res);
+        } catch (apiErr: any) {
+          handleStep({
+            stage: 'error',
+            status: 'failed',
+            message: 'Failed to communicate with backend service.',
+            error: apiErr?.message || 'Backend service connection failed.',
+          });
+          setThreads(prev =>
+            prev.map(t => {
+              if (t.id === activeThreadId) {
+                return {
+                  ...t,
+                  messages: t.messages.map(m => {
+                    if (m.id === agentMsgId) {
+                      return {
+                        ...m,
+                        isStreaming: false,
+                        text: 'I encountered an error communicating with the backend service. Please check your connection or try again.',
+                      };
+                    }
+                    return m;
+                  }),
+                };
+              }
+              return t;
+            })
+          );
+          setIsSubmitting(false);
+        }
       }
     );
   };
@@ -1448,6 +1154,8 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
 
           {/* Controlled Scrollable Thread List */}
           <div className="flex-1 overflow-y-auto space-y-3 pr-0.5 select-none scroll-touch min-h-0">
+            {loadingSessions && <div role="status" className="py-2 text-center text-xs text-[#64748B]">Loading chat sessions...</div>}
+            {sessionsError && <div role="alert" className="py-2 text-center text-xs text-red-600">{sessionsError} <button onClick={() => setSessionsRetry(value => value + 1)} className="underline">Retry</button></div>}
             {filteredThreads.length === 0 ? (
               <div className="py-8 text-center text-xs text-[#64748B]">
                 No conversations found
@@ -1471,8 +1179,8 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                         <div
                           key={thread.id}
                           className={`group relative flex items-center justify-between rounded-xl px-2.5 py-2 transition-all cursor-pointer ${isActive
-                            ? 'bg-white border border-[#CBD5E1] shadow-xs text-[#0F172A]'
-                            : 'hover:bg-white text-[#475569] border border-transparent'
+                              ? 'bg-white border border-[#CBD5E1] shadow-xs text-[#0F172A]'
+                              : 'hover:bg-white text-[#475569] border border-transparent'
                             }`}
                           onClick={() => handleSelectThread(thread.id)}
                         >
@@ -1515,57 +1223,57 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                                 <span className="material-symbols-outlined text-[17px]">more_vert</span>
                               </button>
 
-                              {/* Three-dot Dropdown Menu */}
-                              {isMenuOpen && (
-                                <div
-                                  className="absolute right-0 top-8 w-44 rounded-xl bg-white border border-[#E2E8F0] shadow-xl py-1 z-30 animate-in fade-in zoom-in-95 text-left"
-                                  onClick={(e) => e.stopPropagation()}
+                            {/* Three-dot Dropdown Menu */}
+                            {isMenuOpen && (
+                              <div
+                                className="absolute right-0 top-8 w-44 rounded-xl bg-white border border-[#E2E8F0] shadow-xl py-1 z-30 animate-in fade-in zoom-in-95 text-left"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {/* Rename Action */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuThreadId(null);
+                                    setThreadToRename(thread);
+                                    setRenameTitleInput(thread.title);
+                                  }}
+                                  className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
                                 >
-                                  {/* Rename Action */}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveMenuThreadId(null);
-                                      setThreadToRename(thread);
-                                      setRenameTitleInput(thread.title);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
-                                  >
-                                    <span className="material-symbols-outlined text-[16px] text-[#64748B]">edit</span>
-                                    <span>Rename</span>
-                                  </button>
+                                  <span className="material-symbols-outlined text-[16px] text-[#64748B]">edit</span>
+                                  <span>Rename</span>
+                                </button>
 
-                                  {/* Export Action */}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveMenuThreadId(null);
-                                      handleExportMarkdown(thread);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
-                                  >
-                                    <span className="material-symbols-outlined text-[16px] text-[#64748B]">download</span>
-                                    <span>Export MD</span>
-                                  </button>
+                                {/* Export Action */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuThreadId(null);
+                                    handleExportMarkdown(thread);
+                                  }}
+                                  className="w-full px-3 py-1.5 text-xs text-[#0F172A] hover:bg-[#F1F5F9] flex items-center gap-2 transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[16px] text-[#64748B]">download</span>
+                                  <span>Export MD</span>
+                                </button>
 
-                                  <div className="my-1 border-t border-[#E2E8F0]" />
+                                <div className="my-1 border-t border-[#E2E8F0]" />
 
-                                  {/* Delete Chat Action */}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveMenuThreadId(null);
-                                      setThreadToDelete(thread);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-xs text-[#DC2626] hover:bg-[#FEF2F2] flex items-center gap-2 transition-colors font-medium"
-                                  >
-                                    <span className="material-symbols-outlined text-[16px] text-[#DC2626]">delete</span>
-                                    <span>Delete Chat</span>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
+                                {/* Delete Chat Action */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuThreadId(null);
+                                    setThreadToDelete(thread);
+                                  }}
+                                  className="w-full px-3 py-1.5 text-xs text-[#DC2626] hover:bg-[#FEF2F2] flex items-center gap-2 transition-colors font-medium"
+                                >
+                                  <span className="material-symbols-outlined text-[16px] text-[#DC2626]">delete</span>
+                                  <span>Delete Chat</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         </div>
                       );
                     })}
@@ -1620,8 +1328,8 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                 <h2
                   title={activeThread?.title || 'Conversational Analytics'}
                   className={`font-headline-sm text-xs sm:text-sm text-[#0F172A] font-semibold truncate block leading-tight min-w-0 ${!sidebarCollapsed
-                    ? 'max-w-[110px] xs:max-w-[150px] sm:max-w-[200px] md:max-w-[240px] lg:max-w-[280px]'
-                    : 'max-w-xs sm:max-w-md'
+                      ? 'max-w-[110px] xs:max-w-[150px] sm:max-w-[200px] md:max-w-[240px] lg:max-w-[280px]'
+                      : 'max-w-xs sm:max-w-md'
                     }`}
                 >
                   {activeThread?.title || 'Conversational Analytics'}
@@ -1668,20 +1376,10 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                 }
               }}
               title="Clear all messages in active session"
-              className="h-8.5 px-3 rounded-full bg-white hover:bg-[#F8FAFC] text-[#0F172A] border border-[#CBD5E1] text-xs font-medium inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 whitespace-nowrap"
+              className="h-8.5 px-3 rounded-full bg-white hover:bg-[#F8FAFC] text-[#0F172A] border border-[#CBD5E1] text-xs font-medium inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 whitespace-nowrap cursor-pointer"
             >
               <span className="material-symbols-outlined text-[15px] text-[#64748B]">restart_alt</span>
               <span>Clear</span>
-            </button>
-
-            {/* Jump to Graph Studio */}
-            <button
-              onClick={() => onNavigate('build-your-kpi-graph-studio')}
-              title="Open Graph Studio for custom KPI charts"
-              className="h-8.5 px-3 rounded-full bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] border border-[#BFDBFE] text-xs font-medium inline-flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 whitespace-nowrap"
-            >
-              <span className="material-symbols-outlined text-[15px] text-[#2563EB]">insert_chart</span>
-              <span>Graph Studio</span>
             </button>
           </div>
         </header>
@@ -1690,7 +1388,9 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
         {/* CHAT CONVERSATION AREA: The Primary Scrollable Region */}
         {/* ============================================================ */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-6 scroll-touch min-h-0 bg-[#F8FAFC]/50 relative">
-          {loadingSessionId ? (
+          {sessionLoadError ? (
+            <div role="alert" className="py-8 text-center text-sm text-red-600">{sessionLoadError} <button onClick={() => void handleSelectThread(activeThreadId)} className="underline">Retry</button></div>
+          ) : loadingSessionId ? (
             /* ============================================================ */
             /* Session Loading State: Visible while selected session loads  */
             /* ============================================================ */
@@ -1768,6 +1468,36 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                   </button>
                 ))}
               </div>
+
+              {/* Core Platform Modules & Quick Tools */}
+              <div className="mt-4 pt-3 border-t border-[#E2E8F0] w-full flex items-center justify-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('build-your-kpi-graph-studio')}
+                  className="px-3 py-1.5 rounded-xl bg-[#F5F3FF] hover:bg-[#EDE9FE] text-[#6D28D9] border border-[#DDD6FE] text-xs font-medium inline-flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-[#7C3AED]">query_stats</span>
+                  <span>Build Your KPI (Studio)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onNavigate('upload-dataset')}
+                  className="px-3 py-1.5 rounded-xl bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0] text-xs font-medium inline-flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-[#16A34A]">upload_file</span>
+                  <span>Upload Dataset</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onNavigate('data-explorer')}
+                  className="px-3 py-1.5 rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] border border-[#BFDBFE] text-xs font-medium inline-flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-[#2563EB]">search</span>
+                  <span>Search &amp; Data Explorer</span>
+                </button>
+              </div>
             </div>
           ) : (
             /* ============================================================ */
@@ -1797,11 +1527,8 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
 
               /* Assistant Message Bubble (Left-aligned) */
               const areDocsExpanded = expandedDocMessageId === msg.id;
-              const isPipelineExpanded = !!expandedPipelineMsgIds[msg.id];
-              const intentBadge = getIntentBadge(msg);
-              const runningStep = (msg.processing || []).find(s => s.status === 'running');
-              const lastCompletedStep = [...(msg.processing || [])].reverse().find(s => s.status === 'completed');
-              const activeStep = runningStep || lastCompletedStep || (msg.processing ? msg.processing[0] : null);
+              const intentInfo = resolveIntentDetails(msg.intent, msg.processing, msg.text);
+              const IntentIcon = intentInfo.icon;
 
               return (
                 <div key={msg.id} className="flex items-start gap-3 max-w-4xl mr-auto">
@@ -1818,27 +1545,21 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                           NEOVATIC Assistant
                         </span>
                         <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
-                        {/* High-Level Polished Intent Badge: Clickable to expand/collapse steps */}
-                        {intentBadge && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => togglePipelineDrawer(msg.id)}
-                              title="Click to expand/collapse sequential processing steps"
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${intentBadge.badgeClass} shadow-2xs hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer`}
-                            >
-                              <span>{intentBadge.icon}</span>
-                              <span>{intentBadge.label}</span>
-                              <span
-                                className={`material-symbols-outlined text-[13px] transition-transform duration-200 ${isPipelineExpanded ? 'rotate-180' : ''
-                                  }`}
-                              >
-                                expand_more
-                              </span>
-                            </button>
-                            <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
-                          </>
-                        )}
+                        {/* High-Level Polished Intent Badge */}
+                        <div
+                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border ${intentInfo.pillClass}`}
+                          title={intentInfo.description}
+                        >
+                          <span className="relative flex h-1.5 w-1.5 shrink-0 items-center justify-center">
+                            {msg.isStreaming && (
+                              <span className={`absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping ${intentInfo.dotColor}`} />
+                            )}
+                            <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${intentInfo.dotColor}`} />
+                          </span>
+                          <IntentIcon className="w-3 h-3 shrink-0" />
+                          <span>{intentInfo.label}</span>
+                        </div>
+                        <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
                         <span className="text-[11px] text-[#7C3AED] font-medium px-2 py-0.5 rounded-full bg-[#F5F3FF] border border-[#DDD6FE]">
                           {msg.agentMeta?.model || 'Llama-3.2 11B'}
                         </span>
@@ -1859,159 +1580,16 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
 
                     {/* Assistant Response Content Card */}
                     <div className="bg-white border border-[#E2E8F0] rounded-2xl rounded-tl-xs p-4 sm:p-5 text-[#0F172A] text-sm leading-relaxed shadow-xs space-y-4">
-                      {/* Before / while the bot displays its response: Show intent/process currently working on */}
-                      {msg.isStreaming && msg.processing && msg.processing.length > 0 && (
-                        <div className="rounded-xl border border-indigo-200/90 bg-gradient-to-r from-[#F8FAFC] via-[#F5F3FF]/50 to-[#F0FDFA]/50 shadow-2xs overflow-hidden transition-all">
-                          {/* Active Intent / Ongoing Process Bar (Clickable to expand/collapse vertically) */}
-                          <div
-                            onClick={() => togglePipelineDrawer(msg.id)}
-                            className="w-full flex items-center justify-between p-2.5 sm:p-3 text-left hover:bg-slate-100/70 transition-colors cursor-pointer select-none group"
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                togglePipelineDrawer(msg.id);
-                              }
-                            }}
-                            aria-expanded={isPipelineExpanded}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0 flex-wrap sm:flex-nowrap">
-                              {/* Clickable Active Intent Badge */}
-                              {intentBadge && (
-                                <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${intentBadge.badgeClass} shadow-2xs shrink-0 group-hover:shadow-xs transition-shadow`}
-                                >
-                                  <span>{intentBadge.icon}</span>
-                                  <span>{intentBadge.label}</span>
-                                </span>
-                              )}
-
-                              {/* Live indicator if active process is ongoing */}
-                              <span className="relative flex h-2 w-2 shrink-0">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-600" />
-                              </span>
-
-                              {/* Current Process it is working on */}
-                              <div className="min-w-0 text-xs text-[#1E293B]">
-                                <span className="text-[#64748B] mr-1.5 font-medium">
-                                  Working on:
-                                </span>
-                                <span className="font-semibold text-[#0F172A] truncate">
-                                  {activeStep?.message || activeStep?.stage || 'Enterprise query processing...'}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Collapse / Expand Toggle Affordance */}
-                            <div className="flex items-center gap-1 text-[#64748B] group-hover:text-[#0F172A] text-xs shrink-0 ml-2">
-                              <span className="text-[11px] font-medium hidden sm:inline">
-                                {isPipelineExpanded ? 'Collapse steps' : 'Click active intent to expand'}
-                              </span>
-                              <span
-                                className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${isPipelineExpanded ? 'rotate-180' : ''
-                                  }`}
-                              >
-                                expand_more
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Expanded Vertical Sequence of Processing Steps */}
-                          {isPipelineExpanded && (
-                            <div className="px-3.5 pb-3.5 pt-2 border-t border-slate-200/80 bg-white/95 animate-in fade-in slide-in-from-top-1 space-y-3">
-                              <div className="flex items-center justify-between px-1">
-                                <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider font-mono">
-                                  Sequential Processing Steps
-                                </span>
-                                <span className="text-[10px] text-[#64748B] font-mono">
-                                  {msg.processing.filter(p => p.status === 'completed').length} of {msg.processing.length} completed
-                                </span>
-                              </div>
-
-                              {/* Vertical Connected Stepper */}
-                              <div className="relative pl-7 space-y-2.5 before:absolute before:left-[11px] before:top-2.5 before:bottom-2.5 before:w-[2px] before:bg-slate-200">
-                                {msg.processing.map((step, idx) => {
-                                  const isRunning = step.status === 'running';
-                                  const isDone = step.status === 'completed';
-                                  const isErr = step.status === 'failed' || step.status === 'error';
-                                  return (
-                                    <div key={idx} className="relative flex items-start gap-3">
-                                      {/* Vertical Step Node */}
-                                      <div
-                                        className={`absolute -left-7 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${isRunning
-                                            ? 'bg-violet-600 text-white ring-4 ring-violet-100 shadow-sm'
-                                            : isDone
-                                              ? 'bg-emerald-600 text-white shadow-2xs'
-                                              : isErr
-                                                ? 'bg-red-600 text-white'
-                                                : 'bg-slate-200 text-slate-600'
-                                          }`}
-                                      >
-                                        {isDone ? (
-                                          <span className="material-symbols-outlined text-[14px]">check</span>
-                                        ) : isErr ? (
-                                          <span className="material-symbols-outlined text-[14px]">priority_high</span>
-                                        ) : isRunning ? (
-                                          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                                        ) : (
-                                          <span>{idx + 1}</span>
-                                        )}
-                                      </div>
-
-                                      {/* Step Card Content */}
-                                      <div
-                                        className={`flex-1 rounded-xl p-2.5 sm:p-3 border transition-all text-xs ${isRunning
-                                            ? 'bg-violet-50/80 border-violet-200 shadow-2xs'
-                                            : isDone
-                                              ? 'bg-[#F8FAFC] border-slate-200'
-                                              : 'bg-slate-50 border-slate-200 opacity-70'
-                                          }`}
-                                      >
-                                        <div className="flex items-center justify-between gap-2">
-                                          <span className="font-semibold text-[#0F172A] text-[12px]">
-                                            {formatStageTitle(step.stage)}
-                                          </span>
-                                          <span
-                                            className={`text-[10px] font-medium font-mono px-2 py-0.5 rounded-full capitalize ${isRunning
-                                                ? 'bg-violet-100 text-violet-700 animate-pulse'
-                                                : isDone
-                                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                  : isErr
-                                                    ? 'bg-red-50 text-red-700 border border-red-200'
-                                                    : 'bg-slate-100 text-slate-600'
-                                              }`}
-                                          >
-                                            {isRunning ? 'In progress...' : step.status}
-                                          </span>
-                                        </div>
-                                        <p className="text-slate-600 text-[11px] mt-1 leading-relaxed font-sans">
-                                          {step.message || 'Executing stage in sequence...'}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Collapse Button to close view */}
-                              <div className="flex justify-end pt-1">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    togglePipelineDrawer(msg.id);
-                                  }}
-                                  className="text-[11px] font-medium text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors px-2.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
-                                >
-                                  <span>Collapse to clean view</span>
-                                  <span className="material-symbols-outlined text-[15px]">expand_less</span>
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                      {/* Anthropic Claude & ChatGPT Style Step-wise Intent & Thinking Process */}
+                      {msg.processing && msg.processing.length > 0 && (
+                        <ThinkingProcess
+                          steps={msg.processing}
+                          isStreaming={msg.isStreaming}
+                          intent={msg.intent}
+                          latency={msg.agentMeta?.latency}
+                          model={msg.agentMeta?.model}
+                          similarity={msg.agentMeta?.cosineSim}
+                        />
                       )}
 
                       {/* Live streaming token generation placeholder */}
@@ -2182,78 +1760,6 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                           )}
                         </div>
                       )}
-
-                      {/* Collapsible Pipeline Execution Audit Drawer (Collapsed by default once completed) */}
-                      {!msg.isStreaming && msg.processing && msg.processing.length > 0 && (
-                        <div className="pt-2 border-t border-[#E2E8F0]">
-                          <button
-                            type="button"
-                            onClick={() => togglePipelineDrawer(msg.id)}
-                            className="w-full flex items-center justify-between p-2 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-xs font-medium text-[#475569] transition-colors group"
-                            aria-expanded={isPipelineExpanded}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-amber-500 font-bold">⚡</span>
-                              <span className="font-semibold text-[#0F172A]">
-                                Pipeline Audit ({msg.processing.length} stages)
-                              </span>
-                              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 font-mono">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                Completed
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[#64748B] group-hover:text-[#0F172A]">
-                              <span className="text-[11px] hidden sm:inline">
-                                {isPipelineExpanded ? 'Hide audit trail' : 'View audit trail'}
-                              </span>
-                              <span
-                                className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${isPipelineExpanded ? 'rotate-180' : ''
-                                  }`}
-                              >
-                                expand_more
-                              </span>
-                            </div>
-                          </button>
-
-                          {isPipelineExpanded && (
-                            <div className="mt-2 space-y-1.5 animate-in fade-in slide-in-from-top-1">
-                              {msg.processing.map((step, idx) => {
-                                const isDone = step.status === 'completed';
-                                const isErr = step.status === 'failed' || step.status === 'error';
-                                return (
-                                  <div
-                                    key={idx}
-                                    className="p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-start gap-2.5 text-xs hover:border-[#CBD5E1] transition-colors"
-                                  >
-                                    <div className="mt-0.5 shrink-0">
-                                      {isDone ? (
-                                        <span className="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
-                                      ) : isErr ? (
-                                        <span className="material-symbols-outlined text-[15px] text-red-600">error</span>
-                                      ) : (
-                                        <span className="w-2 h-2 rounded-full bg-slate-400 m-1 inline-block" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="font-semibold text-[#0F172A] text-[12px]">
-                                          {formatStageTitle(step.stage)}
-                                        </span>
-                                        <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-mono capitalize">
-                                          {step.status}
-                                        </span>
-                                      </div>
-                                      <p className="text-[#475569] text-[11px] mt-0.5 leading-relaxed font-sans">
-                                        {step.message || 'Stage processed successfully'}
-                                      </p>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
 
                     {/* Assistant Actions Bar */}
@@ -2320,15 +1826,16 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
         </div>
 
         {/* ============================================================ */}
-        {/* CHAT INPUT AREA: Compact bar with text box beside Enter to send & arrow */}
+        {/* CHAT INPUT AREA: Compact clean text box with Enter hint & send arrow */}
         {/* ============================================================ */}
         <div className="p-3 sm:px-6 bg-white border-t border-[#E2E8F0] shrink-0 z-10">
           <div className="max-w-4xl mx-auto flex items-center gap-2 sm:gap-3 bg-[#F8FAFC] border border-[#CBD5E1] rounded-xl px-3.5 py-1.5 focus-within:border-[#7C3AED] focus-within:ring-2 focus-within:ring-[#7C3AED]/20 focus-within:bg-white transition-all shadow-2xs">
-            {/* Text input directly beside enter to send and arrow button */}
+            {/* Text input */}
             <input
               ref={inputRef}
               type="text"
               value={inputText}
+              disabled={Boolean(loadingSessionId || sessionLoadError)}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -2349,7 +1856,7 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
             <button
               type="button"
               onClick={handleSendMessage}
-              disabled={isSubmitting || !inputText.trim()}
+              disabled={isSubmitting || Boolean(loadingSessionId || sessionLoadError) || !inputText.trim()}
               aria-label="Send message"
               className="w-8 h-8 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] disabled:bg-[#E2E8F0] disabled:text-[#94A3B8] text-white flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0 shadow-xs cursor-pointer"
             >

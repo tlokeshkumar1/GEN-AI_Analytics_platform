@@ -119,3 +119,32 @@ async def get_current_user(
         role=role,
         roles=roles,
     )
+
+
+def get_user_id_from_request(request: Request, body_user_id: Optional[str] = None) -> str:
+    """
+    Extracts user_id from Authorization header (JWT), X-User-Id header, or request body.
+    Falls back to 'default_user' when unauthenticated or during local dev.
+    """
+    # 1. Authorization header (Bearer JWT)
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "").strip()
+        claims = parse_jwt_unverified(token)
+        if claims:
+            uid = claims.get("user_id") or claims.get("user_name") or claims.get("sub")
+            if uid:
+                return uid
+
+    # 2. X-User-Id header
+    x_user_id = request.headers.get("x-user-id") or request.headers.get("X-User-Id")
+    if x_user_id and x_user_id.strip():
+        return x_user_id.strip()
+
+    # 3. Body user_id
+    if body_user_id and body_user_id.strip():
+        return body_user_id.strip()
+
+    # 4. Fallback for unauthenticated local testing
+    return "default_user"
+

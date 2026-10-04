@@ -23,28 +23,44 @@ import { EnterpriseSignIn, UserContext } from './screens/EnterpriseSignIn';
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [usesRouterSession, setUsesRouterSession] = useState(false);
   const [activePath, setActivePath] = useState<string>('executive-dashboard');
+  const [hasOpenedChat, setHasOpenedChat] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
 
-    if (!token) {
-      setIsAuthenticated(false);
-      setCurrentUser(null);
-      return;
-    }
-
-    fetch('/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    // AppRouter forwards its SAP access token using the HttpOnly session cookie.
+    // Check that session before considering a token from a local sign-in.
+    let cancelled = false;
+    let routerSession = true;
+    fetch('/api/auth/me', { credentials: 'same-origin' })
+      .then((res) => {
+        if ((res.status === 401 || res.status === 403) && token) {
+          routerSession = false;
+          return fetch('/api/auth/me', {
+            credentials: 'same-origin',
+            headers: { Authorization: `Bearer ${token}` }
+          });
+        }
+        return res;
+      })
       .then((res) => {
         if (res.ok) return res.json();
         throw new Error('Not authenticated');
       })
       .then((user: UserContext) => {
+        if (cancelled) return;
         if (user && (user.user_id || user.email)) {
+          if (routerSession) {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('sap_ias_sso_token');
+          }
+          localStorage.setItem('auth_user', JSON.stringify(user));
+          setUsesRouterSession(routerSession);
           setCurrentUser(user);
           setIsAuthenticated(true);
         } else {
@@ -52,11 +68,16 @@ export default function App() {
         }
       })
       .catch(() => {
+        if (cancelled) return;
         localStorage.removeItem('auth_token');
         localStorage.removeItem('auth_user');
         setIsAuthenticated(false);
         setCurrentUser(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsCheckingSession(false);
       });
+    return () => { cancelled = true; };
   }, []);
 
   const [customGraphPrompt, setCustomGraphPrompt] = useState<string>(
@@ -64,6 +85,7 @@ export default function App() {
   );
 
   const handleNavigate = (path: string) => {
+    if (path === 'ai-dashboards-rag-chat') setHasOpenedChat(true);
     setActivePath(path);
     setSidebarOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -81,8 +103,12 @@ export default function App() {
     localStorage.removeItem('auth_user');
     setIsAuthenticated(false);
     setCurrentUser(null);
+    setHasOpenedChat(false);
     setActivePath('enterprise-signin');
     setSidebarOpen(false);
+    if (usesRouterSession) {
+      window.location.assign('/logout');
+    }
   };
 
   const handleSelectQueryFromPalette = (query: string) => {
@@ -91,6 +117,14 @@ export default function App() {
 
   const isAuthPage = !isAuthenticated || activePath === 'enterprise-signin' || activePath === 'enterprisesignin';
   const isChat = activePath === 'ai-dashboards-rag-chat';
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] text-[#0F172A]" role="status" aria-live="polite">
+        Signing in with SAP Universal ID / BTP IAS…
+      </div>
+    );
+  }
 
   if (isAuthPage) {
     return (
@@ -136,7 +170,7 @@ export default function App() {
         >
           {/* RAG Chat container maintained client-side to preserve active session state across page navigation */}
           <div className={`flex-1 w-full max-w-[1600px] mx-auto p-2 sm:p-3 lg:p-4 overflow-hidden flex-col ${isChat ? 'flex' : 'hidden'}`}>
-            <RAGChat onNavigate={handleNavigate} />
+            {hasOpenedChat && <RAGChat key={currentUser?.user_id || currentUser?.email} onNavigate={handleNavigate} isActive={isChat} />}
           </div>
 
           {!isChat && (
