@@ -19,18 +19,22 @@ import { DataSources } from './screens/DataSources';
 import { UserManagement } from './screens/UserManagement';
 import { SystemSettings } from './screens/SystemSettings';
 import { EnterpriseSignIn, UserContext } from './screens/EnterpriseSignIn';
+import { clearLocalIdentity, sapRouterRoute, SIGNED_OUT_KEY } from './services/authNavigation';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<UserContext | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
-  const [usesRouterSession, setUsesRouterSession] = useState(false);
   const [activePath, setActivePath] = useState<string>('executive-dashboard');
   const [hasOpenedChat, setHasOpenedChat] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   useEffect(() => {
+    if (localStorage.getItem(SIGNED_OUT_KEY) === 'true') {
+      setIsCheckingSession(false);
+      return;
+    }
     const token = localStorage.getItem('auth_token');
 
     // AppRouter forwards its SAP access token using the HttpOnly session cookie.
@@ -60,7 +64,6 @@ export default function App() {
             localStorage.removeItem('sap_ias_sso_token');
           }
           localStorage.setItem('auth_user', JSON.stringify(user));
-          setUsesRouterSession(routerSession);
           setCurrentUser(user);
           setIsAuthenticated(true);
         } else {
@@ -92,24 +95,33 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      }).catch(() => {});
-    }
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
+    clearLocalIdentity(true);
     setIsAuthenticated(false);
     setCurrentUser(null);
     setHasOpenedChat(false);
     setActivePath('enterprise-signin');
     setSidebarOpen(false);
-    if (usesRouterSession) {
-      window.location.assign('/logout');
-    }
+    // Always end the deployed router session, including credential sign-ins
+    // made while an older router cookie was still present.
+    const logoutTarget = sapRouterRoute('/logout');
+    if (logoutTarget) window.location.replace(logoutTarget);
   };
+
+  useEffect(() => {
+    const guardSignedOutSession = () => {
+      if (localStorage.getItem(SIGNED_OUT_KEY) !== 'true') return;
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+      setHasOpenedChat(false);
+      setIsCheckingSession(false);
+    };
+    window.addEventListener('pageshow', guardSignedOutSession);
+    window.addEventListener('storage', guardSignedOutSession);
+    return () => {
+      window.removeEventListener('pageshow', guardSignedOutSession);
+      window.removeEventListener('storage', guardSignedOutSession);
+    };
+  }, []);
 
   const handleSelectQueryFromPalette = (query: string) => {
     setCustomGraphPrompt(query);

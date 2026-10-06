@@ -1,4 +1,5 @@
 import React, { useState, FormEvent } from 'react';
+import { clearLocalIdentity, sapSignInTarget } from '../services/authNavigation';
 import {
   ShieldCheck,
   Eye,
@@ -33,7 +34,7 @@ export interface EnterpriseSignInProps {
 export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
   onSignInSuccess,
   apiBaseUrl = '',
-  ssoRedirectUrl = '/'
+  ssoRedirectUrl
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,7 +48,14 @@ export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
   const handleSSORedirect = () => {
     setIsSsoLoading(true);
     setError(null);
-    window.location.assign(ssoRedirectUrl);
+    try {
+      const target = ssoRedirectUrl || sapSignInTarget();
+      clearLocalIdentity(false);
+      window.location.assign(target);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'SAP sign-in could not be started.');
+      setIsSsoLoading(false);
+    }
   };
 
   // Direct Credential Auth Submission (Corporate Email & Password)
@@ -90,6 +98,7 @@ export const EnterpriseSignIn: React.FC<EnterpriseSignInProps> = ({
       }
 
       if (userContext) {
+        clearLocalIdentity(false);
         if (token) {
           localStorage.setItem('auth_token', token);
           localStorage.setItem('auth_user', JSON.stringify(userContext));

@@ -18,6 +18,9 @@ if (!process.env.VCAP_APPLICATION) {
 const approuter = require('@sap/approuter');
 
 const ar = approuter();
+const { startSapSignIn } = require('./auth-navigation');
+
+ar.beforeRequestHandler.use(startSapSignIn);
 
 ar.start({
   port: process.env.PORT || 5000

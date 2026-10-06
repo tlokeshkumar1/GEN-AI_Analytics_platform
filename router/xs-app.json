@@ -1,12 +1,34 @@
 {
-  "welcomeFile": "/index.html",
+  "welcomeFile": "/login.html",
   "authenticationMethod": "route",
   "routes": [
     {
-      "source": "^/logged-out\\.html$",
-      "target": "logged-out.html",
+      "source": "^/(login|logged-out)\\.html(?:\\?.*)?$",
+      "target": "$1.html",
       "localDir": "public",
-      "authenticationType": "none"
+      "authenticationType": "none",
+      "cacheControl": "no-cache, no-store, must-revalidate"
+    },
+    {
+      "source": "^/auth-entry\\.js$",
+      "target": "auth-entry.js",
+      "localDir": "public",
+      "authenticationType": "none",
+      "cacheControl": "no-cache, no-store, must-revalidate"
+    },
+    {
+      "source": "^/auth/start$",
+      "target": "login.html",
+      "localDir": "public",
+      "authenticationType": "none",
+      "cacheControl": "no-cache, no-store, must-revalidate"
+    },
+    {
+      "source": "^/app(?:\\?.*)?$",
+      "target": "index.html",
+      "localDir": "resources",
+      "authenticationType": "xsuaa",
+      "cacheControl": "no-cache, no-store, must-revalidate"
     },
     {
       "source": "^/api/(.*)$",
@@ -23,11 +45,13 @@
       "source": "^/(.*)$",
       "target": "$1",
       "localDir": "resources",
-      "authenticationType": "xsuaa"
+      "authenticationType": "xsuaa",
+      "cacheControl": "no-cache, no-store, must-revalidate"
     }
   ],
   "logout": {
     "logoutEndpoint": "/logout",
-    "logoutPage": "/logged-out.html"
+    "logoutPage": "/logged-out.html",
+    "logoutMethod": "GET"
   }
 }
