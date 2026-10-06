@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { fetchManagedUsers, ManagedUser } from '../services/userManagementService';
+import { getApiErrorMessage } from '../services/api';
 
 interface UserManagementProps {
   onNavigate: (path: string) => void;
@@ -11,6 +12,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onNavigate }) =>
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [projectCollections, setProjectCollections] = useState<string[]>([]);
   const requestRef = useRef<AbortController | null>(null);
 
   const refreshUsers = useCallback(async () => {
@@ -23,13 +25,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onNavigate }) =>
       if (!controller.signal.aborted) {
         setUsers(data.users);
         setUpdatedAt(data.fetched_at);
+        setProjectCollections(data.project_role_collections || []);
         setError(null);
       }
     } catch (err) {
       if (!controller.signal.aborted) {
-        setError(axios.isAxiosError(err)
-          ? err.response?.data?.detail || 'Unable to load XSUAA users. Please try again.'
-          : 'Unable to load XSUAA users. Please try again.');
+        setError(getApiErrorMessage(err, 'Unable to load XSUAA users. Please try again.'));
         // Do not retain sensitive records after permission or session loss.
         if (axios.isAxiosError(err) && [401, 403].includes(err.response?.status ?? 0)) {
           setUsers([]);
@@ -151,7 +152,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onNavigate }) =>
           </table>
         </div>
       </div>
-      <p className="text-xs text-[#64748B]">Only users directly assigned to this project’s Administrator or Member role collections are listed. Status shows whether the XSUAA account is enabled. Last Login is the latest sign-in recorded by XSUAA.</p>
+      <p className="text-xs text-[#64748B]">Only users directly assigned to {projectCollections.length ? projectCollections.join(' or ') : 'this project’s Administrator or Member role collections'} are listed. Access through identity-provider group mappings may not appear as a direct assignment. Status shows whether the XSUAA account is enabled. Last Login is the latest sign-in recorded by XSUAA.</p>
     </div>
   );
 };

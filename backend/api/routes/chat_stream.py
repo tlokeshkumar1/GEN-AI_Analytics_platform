@@ -1,6 +1,6 @@
 import json
 import asyncio
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from api.models.request_models import ChatRequest
 from api.rag.pipeline import rag_pipeline
@@ -135,31 +135,20 @@ async def chat_stream(req: ChatRequest, request: Request):
             logger.info("[ChatStream] SSE generation cancelled.")
 
         except Exception as e:
-            logger.error(f"[ChatStream] Exception during SSE generation: {e}")
+            logger.error("[ChatStream] SSE generation failed (%s).", type(e).__name__)
+            detail = e.detail if isinstance(e, HTTPException) else "Chat processing failed. Please retry."
 
             # Emit a failed stage event so the frontend can show the error
             error_stage = {
                 "type": "stage",
                 "stage": "error",
                 "status": "failed",
-                "message": "An internal error occurred while processing your request.",
-                "error": str(e),
+                "message": detail,
+                "error": detail,
             }
             yield f"data: {json.dumps(error_stage)}\n\n"
 
-            # Emit error as result for backward compatibility
-            err_payload = {
-                "type": "result",
-                "data": {
-                    "reply": "I encountered an error processing your request. Please try rephrasing.",
-                    "sources": [],
-                    "intent": "error",
-                    "type": "error",
-                    "status": "error",
-                    "processing": [{"stage": "error", "status": "error", "message": str(e)}],
-                    "session_id": session_id
-                }
-            }
+            err_payload = {"type": "error", "message": detail, "session_id": session_id}
             yield f"data: {json.dumps(err_payload)}\n\n"
             yield f"data: {json.dumps({'type': 'request_completed'})}\n\n"
 

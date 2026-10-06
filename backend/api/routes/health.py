@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends
 from api.models.response_models import HealthResponse
 from api.database.connection import db_manager
 from api.services.ai_core_service import ai_core_service
-from api.utils.auth import get_current_user, UserContext
 
 router = APIRouter(prefix="/api", tags=["Health & Authentication"])
 
@@ -18,9 +17,4 @@ def get_health_status():
         hana_connected=hana_status,
         ai_core_connected=ai_status
     )
-
-@router.get("/auth/me")
-def get_user_me(user: UserContext = Depends(get_current_user)):
-    """Returns the current SAP BTP authenticated user context."""
-    return user.to_dict()
 

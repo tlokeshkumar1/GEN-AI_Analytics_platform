@@ -23,7 +23,7 @@ mbt build -t ./mta_archives
 
 ### Deploy to BTP CF Space
 ```bash
-cf deploy mta_archives/gen-ai-analytics-platform_1.0.0.mtar
+cf deploy mta_archives/gen-ai-analytics-platform_1.0.0.mtar -e deployment.private.mtaext
 ```
 
 Use the actual archive filename emitted by `mbt` if it differs. The MTA ID is lowercase `gen-ai-analytics-platform` and the current version is `1.0.0`.
@@ -50,7 +50,7 @@ The manifest does not provision an HTML5 application repository, database deploy
 
 ### Runtime configuration and data
 
-Review `mta.yaml` runtime properties before building. It currently contains explicit HANA and NVIDIA credential values; use private deployment configuration/service bindings for credentials and do not copy those values into documentation. HANA environment variables take precedence over HDI binding values in the current backend configuration. AI Core settings use a binding when available, or environment configuration; the current MTA does not add that binding.
+Review `mta.yaml` runtime properties before building. HANA and NVIDIA credentials are supplied by the git-ignored `deployment.private.mtaext` or equivalent protected runtime configuration; they are no longer embedded in the manifest. The private extension preserves access to the existing runtime-user chat schema. HANA environment variables take precedence over HDI binding values in the current backend configuration. AI Core settings use a binding when available, or environment configuration; the current MTA does not add that binding.
 
 Configure NVIDIA access for chat/embeddings and AI Core credentials plus deployment settings for graph code generation. See [setup](setup.md) for setting names.
 
@@ -89,7 +89,7 @@ User Management uses only the existing XSUAA **application** service, `dev-gen-a
 
 The new `GEN-AI Analytics Platform User Management (<space>)` collection includes the `UserManagementReader` role template referencing the read-only foreign scopes `xs_user.read` and `xs_authorization.read`. SAP prohibits introducing platform scopes into an already assigned template or an existing collection. Apply the security configuration to the existing service, assign your account both `GEN-AI Analytics Platform Administrator (<space>)` and `GEN-AI Analytics Platform User Management (<space>)`, and sign out and in again to obtain a fresh token with these permissions. These SAP permissions allow directory reads at subaccount level; the API applies the project membership filter before returning records.
 
-The backend validates the signed-in administrator's token against this application's binding and forwards that token to its `apiurl` SCIM `/Users` and (when group IDs need resolving) `/Groups` endpoints. It returns only users directly assigned to the exact project Administrator or Member collections configured by `XSUAA_ADMIN_ROLE_COLLECTION` and `XSUAA_MEMBER_ROLE_COLLECTION`. Unrelated users and role collection names are excluded from the response. No technical-client token is requested and no additional XSUAA service is used.
+The backend validates the signed-in administrator's token against this application's binding and forwards that token to its `apiurl` SCIM `/Users` and `/Groups` endpoints. It returns only users directly assigned to the exact project Administrator or Member collections configured by `XSUAA_ADMIN_ROLE_COLLECTION` and `XSUAA_MEMBER_ROLE_COLLECTION`. Unrelated users and role collection names are excluded from the response. No technical-client token is requested and no additional XSUAA service is used.
 
 Columns use these source fields:
 
@@ -108,3 +108,5 @@ For local development, the backend also reads the ignored root `default-env.json
 The table shows **Loading accounts...** or **Accounts unavailable** until the first successful user read. A zero count is shown only after XSUAA confirms an empty result.
 
 SAP references: [Application security scopes and foreign references](https://github.com/SAP-docs/btp-cloud-platform/blob/main/docs/30-development/application-security-descriptor-configuration-syntax-517895a.md), [last-login and account fields](https://help.sap.com/docs/automation-pilot/automation-pilot/getsubaccountuser-command), and [SAP Python token validation library](https://github.com/SAP/cloud-pysec).
+
+For the verified schema, role collection names and restart steps, see [SAP authentication and chat history recovery](sap-auth-history-recovery.md).

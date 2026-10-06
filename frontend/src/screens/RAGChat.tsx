@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  sendChatMessage,
   sendChatMessageStream,
   ChatResponse,
   ProcessingStep,
@@ -10,6 +9,7 @@ import {
 } from '../services/chatbotService';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { ThinkingProcess, resolveIntentDetails } from '../components/ThinkingProcess';
+import { getApiErrorMessage } from '../services/api';
 
 interface RAGChatProps {
   onNavigate: (path: string) => void;
@@ -20,7 +20,7 @@ export interface RetrievedDocument {
   id: string;
   source: string;
   snippet: string;
-  relevanceScore: number;
+  relevanceScore: number | null;
   tableOrCollection: string;
   timestamp: string;
 }
@@ -207,7 +207,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
           });
         }
       } catch (err) {
-        if (!controller.signal.aborted) setSessionsError('Unable to load chat sessions. Please retry.');
+        if (!controller.signal.aborted) setSessionsError(getApiErrorMessage(err, 'Unable to load chat sessions. Please retry.'));
       } finally {
         if (!controller.signal.aborted) setLoadingSessions(false);
       }
@@ -266,7 +266,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
             source: srcMeta.source || (srcMeta.country ? `Country: ${srcMeta.country}` : (srcMeta.type || 'SAP_HANA_VECTOR_STORE')),
             tableOrCollection: 'SAP_HANA_VECTOR_DB',
             snippet: s.TEXT_CHUNK || s.snippet || '',
-            relevanceScore: typeof s.SCORE === 'number' ? Number(s.SCORE.toFixed(3)) : 0.92,
+            relevanceScore: typeof s.SCORE === 'number' ? Number(s.SCORE.toFixed(3)) : null,
             timestamp: srcMeta.year ? `Partition: FY${srcMeta.year}` : 'Indexed Chunk',
           };
         });
@@ -287,9 +287,9 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
           userRole: m.ROLE === 'user' ? 'You · Analytics Director' : undefined,
           text: m.CONTENT,
           agentMeta: m.ROLE !== 'user' ? {
-            latency: metaObj.latency || '0.22s',
-            cosineSim: metaObj.cosineSim || (retrievedDocs[0]?.relevanceScore ? String(retrievedDocs[0].relevanceScore) : '0.952'),
-            model: metaObj.model || 'GPT-4o / HANA Vector RAG',
+            latency: metaObj.latency || 'Not available',
+            cosineSim: metaObj.cosineSim || (retrievedDocs[0]?.relevanceScore ? String(retrievedDocs[0].relevanceScore) : 'Not available'),
+            model: metaObj.model || 'Not available',
           } : undefined,
           chartData: metaObj.chartData || (metaObj.chart_type ? {
             title: `${metaObj.chart_type.toUpperCase()} Analytics Chart`,
@@ -325,7 +325,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
         })
       );
     } catch (err) {
-      if (!signal.aborted) setSessionLoadError('Unable to open this conversation. Please retry.');
+      if (!signal.aborted) setSessionLoadError(getApiErrorMessage(err, 'Unable to open this conversation. Please retry.'));
     }
   };
 
@@ -391,9 +391,11 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
     if (!threadToDelete) return;
     const deletedId = threadToDelete.id;
     try {
-      await deleteChatSession(deletedId);
-    } catch {
-      // Ignore network error
+      if (!draftIds.current.has(deletedId)) await deleteChatSession(deletedId);
+    } catch (err) {
+      setSessionLoadError(getApiErrorMessage(err, 'Unable to delete this conversation. Please retry.'));
+      setThreadToDelete(null);
+      return;
     }
     const remaining = threads.filter(t => t.id !== deletedId);
     setThreads(remaining);
@@ -469,7 +471,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
       intent: initialIntent,
       agentMeta: {
         latency: 'Streaming...',
-        cosineSim: '0.965',
+        cosineSim: 'Not available',
         model: 'NVIDIA NIM / SAP AI Core',
       },
       text: '',
@@ -506,7 +508,6 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
 
     setIsSubmitting(true);
 
-    let hasReceivedTokenOrAnswer = false;
 
     // Handle stage updates from SSE
     const handleStep = (step: ProcessingStep) => {
@@ -550,7 +551,6 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
 
     // Handle real-time token streaming
     const handleToken = (token: string) => {
-      hasReceivedTokenOrAnswer = true;
       setThreads(prev =>
         prev.map(t => {
           if (t.id === activeThreadId) {
@@ -574,13 +574,12 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
 
     // Handle full result metadata
     const handleResult = (res: ChatResponse) => {
-      hasReceivedTokenOrAnswer = true;
       const docs: RetrievedDocument[] = (res.sources || []).map((s, idx) => ({
         id: s.ID || `src-${idx}`,
         source: (s.METADATA as any)?.source || 'SAP_HANA_VECTOR_STORE',
         tableOrCollection: 'SAP_HANA_VECTOR_DB',
         snippet: s.TEXT_CHUNK || 'Retrieved semantic document chunk',
-        relevanceScore: typeof s.SCORE === 'number' ? Number(s.SCORE.toFixed(3)) : 0.948,
+        relevanceScore: typeof s.SCORE === 'number' ? Number(s.SCORE.toFixed(3)) : null,
         timestamp: 'Indexed Chunk',
       }));
 
@@ -604,7 +603,7 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
                     text: res.reply || m.text || res.insights || 'Grounded response generated.',
                     agentMeta: {
                       latency: `${elapsed}s`,
-                      cosineSim: docs[0]?.relevanceScore ? docs[0].relevanceScore.toFixed(3) : '0.965',
+                      cosineSim: docs[0]?.relevanceScore ? docs[0].relevanceScore.toFixed(3) : 'Not available',
                       model: 'NVIDIA NIM (Llama-3.2 11B) / SAP AI Core',
                     },
                     sources: `${docs.length} RAG sources retrieved · SAP HANA Cloud Tenant us10`,
@@ -626,284 +625,20 @@ export const RAGChat: React.FC<RAGChatProps> = ({ onNavigate, isActive }) => {
       setIsSubmitting(false);
     };
 
-    // Fallback simulation in case stream is offline or standard endpoint errors
-    const executeFallbackSimulation = () => {
-      if (hasReceivedTokenOrAnswer) {
-        setThreads(prev =>
-          prev.map(t => ({
-            ...t,
-            messages: t.messages.map(m => (m.id === agentMsgId ? { ...m, isStreaming: false } : m)),
-          }))
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      const lower = query.toLowerCase();
-      let responseText = '';
-      let chartData: ChatMessage['chartData'] = undefined;
-      let riskFactors: ChatMessage['riskFactors'] = undefined;
-      let retrievedDocs: RetrievedDocument[] = [];
-
-      if (lower.includes('margin') || lower.includes('profit') || lower.includes('gross')) {
-        responseText = `### Executive Summary: Gross Margin Analysis (FY2024)
-
-Retrieved in-memory partitions from **SAP HANA Sales & Margin Fact** (\`SAP_HANA_SALES_FACT\`).
-
-| Product Category | Net Revenue | Gross Margin | Margin Trend |
-| :--- | :---: | :---: | :---: |
-| **Robotics Automation** | $48.9M | **48.2%** | ▲ +3.1% YoY |
-| **Material Handling & Storage** | $58.2M | **42.1%** | ▲ +1.4% YoY |
-| **Safety & Compliance** | $24.2M | **38.6%** | ▬ Stable |
-| **Heavy Machinery** | $36.7M | **34.2%** | ▼ -1.8% YoY |
-
-> **Strategic Finding:** Robotics Automation commands the highest unit profitability across European nodes, driven by auxiliary firmware attachment rates (**62.4%**). Heavy Machinery experienced margin compression due to raw titanium surcharges in Q2.
-
-#### Actionable Recommendations:
-1. **Hedging Strategy:** Secure forward contracts on German industrial steel lots to mitigate Heavy Machinery spot variance.
-2. **Quota Rebalancing:** Reallocate 4.5% of regional sales capacity toward automated assembly systems to optimize blended margin.`;
-        chartData = {
-          title: 'Gross Margin by Product Category (FY2024 Actuals)',
-          unit: 'Margin %',
-          items: [
-            { label: 'Robotics Automation', value: 48.2, displayValue: '48.2%' },
-            { label: 'Material Handling', value: 42.1, displayValue: '42.1%' },
-            { label: 'Safety & Compliance', value: 38.6, displayValue: '38.6%' },
-            { label: 'Heavy Machinery', value: 34.2, displayValue: '34.2%' },
-          ],
-        };
-        riskFactors = [
-          { title: 'Material Price Exposure', desc: 'Heavy Machinery margin affected by titanium alloy surcharges in Q2.' },
-          { title: 'Software Renewal Attach', desc: 'Auxiliary SaaS licenses attached to 78% of new automation shipments.' },
-        ];
-        retrievedDocs = [
-          {
-            id: 'doc-m1',
-            source: 'SAP_HANA_SALES_FACT (Table Partition FY24)',
-            tableOrCollection: 'SAP_HANA_SALES_FACT',
-            snippet: 'Aggregate margin records: Robotics Automation revenue $48.92M with 48.2% gross margin. Firmware attachment 62.4%.',
-            relevanceScore: 0.964,
-            timestamp: 'Partition: FY2024_Q3',
-          },
-        ];
-      } else if (lower.includes('order') || lower.includes('so-') || lower.includes('fulfillment') || lower.includes('so106760') || lower.includes('106760')) {
-        responseText = `### Sales Order Fulfillment Record: SO-106760
-
-Verified against **SAP S/4HANA Sales & Distribution** (\`SAP_S4HANA_SD_ORDERS\`).
-
-| Line Item | Description | Quantity | Net Amount | Realized Margin |
-| :---: | :--- | :---: | :---: | :---: |
-| **10** | Industrial Robotic Arm X-400 | 4 | **$240,000.00** | 46.2% |
-| **20** | Firmware Enterprise Pack | 4 | **$14,500.00** | 92.0% |
-| **30** | Proximity Sensors Matrix | 15 | **$9,800.00** | 38.5% |
-
-- **Customer:** Global Logistics Automation AG
-- **Shipping Carrier:** DB Schenker (Tracking: \`SHP-99412-EUR\`)
-- **Status:** **Shipped & In Transit** (Delivery scheduled: *Tomorrow 14:00 CET*)
-
-\`\`\`sql
--- Line-item verification query
-SELECT "ItemNumber", "MaterialCode", "NetValueUSD", "FulfillmentStatus"
-FROM "SAP_S4HANA"."VBAP"
-WHERE "SalesOrder" = 'SO-106760';
-\`\`\``;
-        retrievedDocs = [
-          {
-            id: 'doc-o1',
-            source: 'SAP_S4HANA_SD_ORDERS',
-            tableOrCollection: 'V_SALES_ORDERS',
-            snippet: 'SO-106760: Total $264,300.00. 3 line items fulfilled. Carrier DB Schenker.',
-            relevanceScore: 0.982,
-            timestamp: 'Order Sync: Real-time',
-          },
-        ];
-      } else {
-        responseText = `### Conversational Analytics Report
-
-Grounded against **3,248 SAP HANA Vector Embeddings** (\`SAP_HANA_VECTOR_DB\`).
-
-- **Total Net Revenue:** $184.2M *(+14.8% YoY pace)*
-- **Blended Gross Margin:** **42.6%** *(Exceeds FY24 target of 40.0%)*
-- **Order On-Time Fulfillment:** 96.4% across EMEA & APAC distribution hubs
-
-\`\`\`sql
--- Analytical grounding query executed on SAP HANA Column Store
-SELECT 
-    "Category",
-    ROUND(SUM("NetRevenueUSD") / 1e6, 2) AS "Revenue_Millions",
-    ROUND(AVG("GrossMarginPct") * 100, 1) AS "Margin_Pct"
-FROM "NEOVATIC_DB"."SALES_FACT"
-GROUP BY "Category"
-ORDER BY "Revenue_Millions" DESC;
-\`\`\`
-
-All metrics are reconciled against the continuous in-memory vector ledger.`;
-        retrievedDocs = [
-          {
-            id: 'doc-g1',
-            source: 'SAP_HANA_SALES_FACT (Consolidated Ledger)',
-            tableOrCollection: 'SAP_HANA_SALES_FACT',
-            snippet: 'Evaluated 3,248 vector chunks. FYTD Total Net Revenue $184.2M, Gross Profit $78.5M, Gross Margin 42.6%.',
-            relevanceScore: 0.948,
-            timestamp: 'Indexed: Today 10:00 AM',
-          },
-        ];
-      }
-
-      let detectedIntent = 'analytics_graph';
-      let intentStageMsg = 'Intent: Analytics & Graph';
-      if (
-        lower.includes('order') ||
-        lower.includes('so-') ||
-        lower.includes('fulfillment') ||
-        lower.includes('so106760') ||
-        lower.includes('106760')
-      ) {
-        detectedIntent = 'order_lookup';
-        intentStageMsg = 'Intent: Order Lookup';
-      } else if (
-        lower.includes('vector') ||
-        lower.includes('hana') ||
-        lower.includes('search') ||
-        lower.includes('document')
-      ) {
-        detectedIntent = 'hana_vector_search';
-        intentStageMsg = 'Intent: HANA Vector Search';
-      }
-
-      // Step 1: Intent detection
-      handleStep({
-        stage: 'intent_classification',
-        status: 'running',
-        message: 'Detecting enterprise analytics intent...',
-      });
-
-      setTimeout(() => {
-        handleStep({
-          stage: 'intent_classification',
-          status: 'completed',
-          message: intentStageMsg,
-        });
-
-        // Step 2: Vector retrieval or ERP lookup
-        const isOrder = detectedIntent === 'order_lookup';
-        handleStep({
-          stage: isOrder ? 'erp_lookup' : 'vector_search',
-          status: 'running',
-          message: isOrder
-            ? 'Connecting to SAP S/4HANA Sales & Distribution...'
-            : 'Querying SAP HANA vector embeddings (cosine > 0.88)...',
-        });
-
-        setTimeout(() => {
-          handleStep({
-            stage: isOrder ? 'erp_lookup' : 'vector_search',
-            status: 'completed',
-            message: isOrder
-              ? 'Verified order record in SAP_S4HANA_SD_ORDERS'
-              : 'Retrieved 3,248 vector chunks from SAP_HANA_SALES_FACT',
-          });
-
-          // Step 3: LLM generation
-          handleStep({
-            stage: 'final_response',
-            status: 'running',
-            message: 'Synthesizing response via NVIDIA NIM...',
-          });
-
-          setTimeout(() => {
-            // Stream tokens in words
-            const words = responseText.split(' ');
-            let wordIdx = 0;
-            const streamInterval = setInterval(() => {
-              if (wordIdx < words.length) {
-                const chunk = words.slice(wordIdx, wordIdx + 3).join(' ') + ' ';
-                handleToken(chunk);
-                wordIdx += 3;
-              } else {
-                clearInterval(streamInterval);
-                handleStep({
-                  stage: 'final_response',
-                  status: 'completed',
-                  message: 'Response synthesized via NVIDIA NIM',
-                });
-
-                setThreads(prev =>
-                  prev.map(t => {
-                    if (t.id === activeThreadId) {
-                      return {
-                        ...t,
-                        messages: t.messages.map(m => {
-                          if (m.id === agentMsgId) {
-                            return {
-                              ...m,
-                              isStreaming: false,
-                              intent: detectedIntent,
-                              chartData,
-                              riskFactors,
-                              sources: `SAP_HANA_SALES_FACT (${retrievedDocs.length * 1240} rows evaluated) · Vector Cosine Similarity: 0.952 · HANA Cloud Tenant us10`,
-                              retrievedDocs,
-                              agentMeta: {
-                                latency: '0.24s',
-                                cosineSim: '0.965',
-                                model: 'NVIDIA NIM (Llama-3.2 11B) / SAP AI Core',
-                              },
-                            };
-                          }
-                          return m;
-                        }),
-                      };
-                    }
-                    return t;
-                  })
-                );
-                setIsSubmitting(false);
-              }
-            }, 30);
-          }, 450);
-        }, 650);
-      }, 550);
-    };
-
     sendChatMessageStream(
       query,
       activeThreadId,
       handleStep,
       handleToken,
       handleResult,
-      async (_err: any) => {
-        try {
-          const res = await sendChatMessage(query, activeThreadId);
-          handleResult(res);
-        } catch (apiErr: any) {
-          handleStep({
-            stage: 'error',
-            status: 'failed',
-            message: 'Failed to communicate with backend service.',
-            error: apiErr?.message || 'Backend service connection failed.',
-          });
-          setThreads(prev =>
-            prev.map(t => {
-              if (t.id === activeThreadId) {
-                return {
-                  ...t,
-                  messages: t.messages.map(m => {
-                    if (m.id === agentMsgId) {
-                      return {
-                        ...m,
-                        isStreaming: false,
-                        text: 'I encountered an error communicating with the backend service. Please check your connection or try again.',
-                      };
-                    }
-                    return m;
-                  }),
-                };
-              }
-              return t;
-            })
-          );
-          setIsSubmitting(false);
-        }
+      (err: unknown) => {
+        const message = getApiErrorMessage(err, 'Chat processing failed. Please retry.');
+        handleStep({ stage: 'error', status: 'failed', message, error: message });
+        setThreads(prev => prev.map(t => t.id === activeThreadId ? {
+          ...t,
+          messages: t.messages.map(m => m.id === agentMsgId ? { ...m, isStreaming: false, text: message } : m),
+        } : t));
+        setIsSubmitting(false);
       }
     );
   };
@@ -919,7 +654,7 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
         if (m.sender === 'user') {
           return `### ${m.userRole || 'User'} (${m.timestamp})\n\n${m.text}\n`;
         } else {
-          return `### NEOVATIC RAG Assistant (${m.timestamp})\n*Model: ${m.agentMeta?.model || 'Llama-3.2'} | Latency: ${m.agentMeta?.latency || '0.2s'} | Cosine: ${m.agentMeta?.cosineSim || '0.95'}*\n\n${m.text}\n\n**Sources:** ${m.sources || 'SAP HANA Vector Store'}\n`;
+          return `### NEOVATIC RAG Assistant (${m.timestamp})\n*Model: ${m.agentMeta?.model || 'Llama-3.2'} | Latency: ${m.agentMeta?.latency || 'Not available'} | Cosine: ${m.agentMeta?.cosineSim || 'Not available'}*\n\n${m.text}\n\n**Sources:** ${m.sources || 'No sources returned'}\n`;
         }
       })
       .join('\n---\n\n');
@@ -1565,7 +1300,7 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                         </span>
                         <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
                         <span className="text-[11px] text-[#64748B] font-mono">
-                          {msg.agentMeta?.latency || '0.2s'}
+                          {msg.agentMeta?.latency || 'Not available'}
                         </span>
                       </div>
 
@@ -1745,7 +1480,7 @@ All metrics are reconciled against the continuous in-memory vector ledger.`;
                                       {doc.source}
                                     </span>
                                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0]">
-                                      Sim: {doc.relevanceScore}
+                                      Sim: {doc.relevanceScore ?? 'Not available'}
                                     </span>
                                   </div>
                                   <p className="text-[#334155] font-mono text-[11px] bg-white p-2 rounded-lg border border-[#E2E8F0] leading-relaxed break-words">

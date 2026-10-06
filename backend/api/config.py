@@ -7,10 +7,11 @@ from pydantic_settings import BaseSettings
 # Load environment variables from root or local directory
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env_path = BASE_DIR / ".env"
-if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
-else:
-    load_dotenv()
+if not os.getenv("VCAP_APPLICATION"):
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+    else:
+        load_dotenv()
 
 def _get_hana_credentials_from_vcap():
     """Extract HANA credentials from VCAP_SERVICES (CF environment)."""
@@ -63,43 +64,18 @@ def _get_aicore_credentials_from_vcap():
 
 def _get_xsuaa_credentials_from_vcap():
     """Extract XSUAA credentials from VCAP_SERVICES or environment."""
-    vcap_services = os.getenv("VCAP_SERVICES")
-    if not vcap_services:
-        # Check default-env.json if present
-        default_env_path = BASE_DIR / "default-env.json"
-        if default_env_path.exists():
-            try:
-                with open(default_env_path, "r", encoding="utf-8") as f:
-                    content = json.load(f)
-                    vcap_services = json.dumps(content.get("VCAP_SERVICES", {}))
-            except Exception:
-                pass
-    if not vcap_services:
-        return {}
-    try:
-        services = json.loads(vcap_services) if isinstance(vcap_services, str) else vcap_services
-        xsuaa_services = services.get("xsuaa", [])
-        for svc in xsuaa_services:
-            # The apiaccess binding is for SCIM, not application sign-in.
-            if svc.get("plan") == "apiaccess":
-                continue
-            creds = svc.get("credentials", {})
-            if creds.get("clientid"):
-                auth_url = creds.get("url", "")
-                if auth_url and not auth_url.endswith("/oauth/token"):
-                    auth_url = auth_url.rstrip("/") + "/oauth/token"
-                return {
-                    "client_id": creds.get("clientid", ""),
-                    "client_secret": creds.get("clientsecret", ""),
-                    "auth_url": auth_url,
-                    "url": creds.get("url", ""),
-                    "xsappname": creds.get("xsappname", ""),
-                    "verification_key": creds.get("verificationkey", ""),
-                    "identity_zone": creds.get("identityzone", "")
-                }
-    except Exception:
-        pass
-    return {}
+    from api.xsuaa import xsuaa_credentials
+    credentials = xsuaa_credentials()
+    url = credentials.get("url", "")
+    return {
+        "client_id": credentials.get("clientid", ""),
+        "client_secret": credentials.get("clientsecret", ""),
+        "auth_url": url.rstrip("/") + "/oauth/token" if url else "",
+        "url": url, "xsappname": credentials.get("xsappname", ""),
+        "verification_key": credentials.get("verificationkey", ""),
+        "identity_zone": credentials.get("identityzone", ""),
+    }
+
 
 _vcap_hana = _get_hana_credentials_from_vcap()
 _vcap_aicore = _get_aicore_credentials_from_vcap()
@@ -131,7 +107,8 @@ class Settings(BaseSettings):
     NVIDIA_LLM_URL: str = os.getenv("NVIDIA_LLM_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
 
 
-    # SAP HANA Cloud Configuration (env vars take precedence to ensure Localhost & CF share identical database user and sessions)
+    # Explicit HANA settings can target existing tables in a legacy runtime-user schema.
+    # Otherwise use the live HDI binding; Cloud Foundry never loads packaged .env files.
     HANA_ADDRESS: str = os.getenv("HANA_ADDRESS") or _vcap_hana.get("host", "")
     HANA_PORT: int = int(os.getenv("HANA_PORT") or _vcap_hana.get("port") or 443)
     HANA_USER: str = os.getenv("HANA_USER") or _vcap_hana.get("user", "")

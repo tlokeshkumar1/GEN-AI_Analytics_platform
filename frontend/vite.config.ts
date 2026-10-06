@@ -22,6 +22,15 @@ export default defineConfig(() => {
         '/api': {
           target: 'http://localhost:8000',
           changeOrigin: true,
+          // Browser error handling needs an API response if the backend is down.
+          configure(proxy) {
+            proxy.on('error', (_error, _request, response) => {
+              if ('writeHead' in response && !response.headersSent) {
+                response.writeHead(503, { 'Content-Type': 'application/json' });
+                response.end(JSON.stringify({ detail: 'The API backend is unavailable. Start the backend and retry.' }));
+              }
+            });
+          },
         },
       },
     },

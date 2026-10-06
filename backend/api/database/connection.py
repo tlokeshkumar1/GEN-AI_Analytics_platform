@@ -18,6 +18,7 @@ class HANAConnectionManager:
         self.port = settings.HANA_PORT
         self.user = settings.HANA_USER
         self.password = settings.HANA_PASSWORD
+        self.schema = settings.HANA_SCHEMA
         self._connection_pool = []
         self._pool_lock = threading.Lock()
         self._max_pool_size = 5
@@ -38,9 +39,13 @@ class HANAConnectionManager:
                     return conn
                 except Exception:
                     # Connection is dead, create a new one
-                    pass
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         
         # Create new connection
+        conn = None
         try:
             conn = dbapi.connect(
                 address=self.address,
@@ -50,9 +55,21 @@ class HANAConnectionManager:
                 encrypt="true",
                 sslValidateCertificate="false"
             )
+            if self.schema:
+                cursor = conn.cursor()
+                try:
+                    schema_identifier = self.schema.replace('"', '""')
+                    cursor.execute(f'SET SCHEMA "{schema_identifier}"')
+                finally:
+                    cursor.close()
             return conn
         except Exception as e:
-            logger.error(f"Failed to connect to SAP HANA Cloud: {e}")
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            logger.error("Failed to connect to the configured SAP HANA schema (%s).", type(e).__name__)
             return None
 
     def return_connection(self, conn):

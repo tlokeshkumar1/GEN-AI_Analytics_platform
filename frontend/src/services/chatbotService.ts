@@ -1,4 +1,4 @@
-import api from './api';
+import api, { getApiErrorMessage } from './api';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,11 +64,17 @@ export interface GenerateGraphResponse {
 
 export const fetchChatSessions = async (signal?: AbortSignal): Promise<ChatSession[]> => {
   const res = await api.get<ChatSession[]>('/chat/sessions', { signal });
+  if (!Array.isArray(res.data)) {
+    throw new Error('Chat history returned an invalid response. Check the API destination and retry.');
+  }
   return res.data;
 };
 
 export const fetchSessionMessages = async (sessionId: string, signal?: AbortSignal): Promise<ChatMessageRecord[]> => {
   const res = await api.get<ChatMessageRecord[]>(`/chat/sessions/${encodeURIComponent(sessionId)}`, { signal });
+  if (!Array.isArray(res.data)) {
+    throw new Error('Chat messages returned an invalid response. Please retry.');
+  }
   return res.data;
 };
 
@@ -115,17 +121,6 @@ export const sendChatMessageStream = async (
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const userJson = localStorage.getItem('auth_user');
-    if (userJson) {
-      try {
-        const user = JSON.parse(userJson);
-        if (user?.user_id) {
-          headers['X-User-Id'] = user.user_id;
-        }
-      } catch {
-        // ignore
-      }
-    }
 
     const response = await fetch('/api/chat/stream', {
       method: 'POST',
@@ -134,8 +129,15 @@ export const sendChatMessageStream = async (
       body: JSON.stringify({ message, session_id: sessionId }),
     });
 
-    if (!response.ok || !response.body) {
-      // Fallback to standard HTTP POST /api/chat
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      const detail = typeof data?.detail === 'string' ? data.detail : `Chat request failed (HTTP ${response.status}). Please retry.`;
+      throw new Error(detail);
+    }
+    if (response.headers.get('content-type')?.includes('text/html')) {
+      throw new Error('SAP returned a sign-in page. Sign in again and check the application router destination.');
+    }
+    if (!response.body) {
       const standardRes = await sendChatMessage(message, sessionId);
       onResult(standardRes);
       return;
@@ -210,6 +212,10 @@ export const sendChatMessageStream = async (
               case 'request_completed':
                 break;
 
+              case 'error':
+                onError(new Error(parsed.message || parsed.error || 'Chat processing failed. Please retry.'));
+                break;
+
               default:
                 break;
             }
@@ -220,6 +226,6 @@ export const sendChatMessageStream = async (
       }
     }
   } catch (err) {
-    onError(err);
+    onError(new Error(getApiErrorMessage(err, 'Chat request failed. Please retry.')));
   }
 };

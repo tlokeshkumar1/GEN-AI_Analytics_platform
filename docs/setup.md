@@ -58,7 +58,7 @@ npm run start:frontend
 
 Open [http://localhost:3000](http://localhost:3000). Vite proxies API requests to port 8000; keep both processes running.
 
-Local Vite does not provide the deployed SAP session. Backend profile requests require a Bearer token. Use a configured local SAP login/token flow; for complete hosted SAP sign-in, use the deployed router described in [deployment](deployment.md). User Management also requires an application binding and administrator/directory-reader permissions.
+Local Vite does not provide the deployed SAP session. Backend profile requests require a Bearer token. Use a configured local SAP login/token flow; for complete hosted SAP sign-in, use the deployed router described in [deployment](deployment.md). User Management also requires an application binding, the project Administrator role and both directory read scopes. See [SAP authentication and chat history recovery](sap-auth-history-recovery.md) for the verified dev role names and existing chat schema.
 
 ## Dataset
 

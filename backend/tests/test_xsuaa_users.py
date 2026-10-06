@@ -19,10 +19,12 @@ import jwt
 import requests
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from api.routes.users import router
+from api.routes.auth import router as auth_router
+from api.utils.auth import get_user_id_from_request
 from api.services import xsuaa_users_service as service
 
 
@@ -44,17 +46,24 @@ class XsuaaUsersTests(unittest.TestCase):
             "VCAP_SERVICES": json.dumps({"xsuaa": [{"plan": "application", "credentials": self.application}]}),
             "XSUAA_ADMIN_ROLE_COLLECTION": "Platform Administrator (dev)",
             "XSUAA_MEMBER_ROLE_COLLECTION": "Platform Member (dev)",
+            "APP_ENV": "development",
         }, clear=True)
         self.env.start()
         self.addCleanup(self.env.stop)
         app = FastAPI()
         app.include_router(router)
+        app.include_router(auth_router)
+        @app.get("/identity")
+        def identity(request: Request, user_id: str | None = None):
+            return {"user_id": get_user_id_from_request(request, user_id)}
         self.client = TestClient(app)
 
-    def token(self, scope="platform!t1.Admin", **extra):
+    def token(self, scope=None, **extra):
+        scopes = ["platform!t1.Admin", "xs_user.read", "xs_authorization.read"] if scope is None else ([scope] if isinstance(scope, str) else scope)
         claims = {"cid": self.application["clientid"], "zid": "test-zone",
-                  "aud": [self.application["clientid"]], "scope": [scope],
+                  "aud": [self.application["clientid"]], "scope": scopes,
                   "user_name": "admin@example.test", "grant_type": "authorization_code",
+                  "iat": int(time.time()) - 1, "nbf": int(time.time()) - 1,
                   "exp": int(time.time()) + 300, **extra}
         return jwt.encode(claims, self.private_key, algorithm="RS256")
 
@@ -138,7 +147,8 @@ class XsuaaUsersTests(unittest.TestCase):
         session.__enter__ = Mock(return_value=session)
         session.__exit__ = Mock(return_value=False)
         session.get.side_effect = [self.response({"resources": [{"id": "u1", "groups": [{"value": "g1"}]}], "totalResults": 1}),
-                                   self.response({"resources": [{"id": "g1", "displayName": "Platform Member (dev)"}], "totalResults": 1})]
+                                   self.response({"resources": [{"id": "g1", "displayName": "Platform Member (dev)"},
+                                                               {"id": "g2", "displayName": "Platform Administrator (dev)"}], "totalResults": 2})]
         with patch.object(service, "xsuaa_credentials", return_value=credentials), patch.object(requests, "Session", return_value=session):
             data = service.list_users("Bearer administrator-token")
         self.assertEqual(data["users"][0]["tier"], "Member")
@@ -151,13 +161,16 @@ class XsuaaUsersTests(unittest.TestCase):
         session = Mock()
         session.__enter__ = Mock(return_value=session)
         session.__exit__ = Mock(return_value=False)
-        session.get.return_value = self.response({"resources": [
+        session.get.side_effect = [self.response({"resources": [
             {"id": "project-admin", "groups": [{"display": "Platform Administrator (dev)"}, {"display": "Unrelated Admin"}]},
             {"id": "project-member", "groups": [{"display": "Platform Member (dev)"}]},
             {"id": "unrelated", "groups": [{"display": "Subaccount Administrator"}]},
             {"id": "other-space", "groups": [{"display": "Platform Member (prod)"}]},
             {"id": "unassigned"},
-        ], "totalResults": 5})
+        ], "totalResults": 5}), self.response({"resources": [
+            {"id": "g1", "displayName": "Platform Member (dev)"},
+            {"id": "g2", "displayName": "Platform Administrator (dev)"},
+        ], "totalResults": 2})]
         with patch.object(service, "xsuaa_credentials", return_value={"apiurl": "https://api.example.test"}), patch.object(requests, "Session", return_value=session):
             data = service.list_users("Bearer administrator-token")
         self.assertEqual(data["total"], 2)
@@ -181,6 +194,84 @@ class XsuaaUsersTests(unittest.TestCase):
                 service.list_users("Bearer administrator-token")
         self.assertEqual(error.exception.status_code, 502)
         self.assertNotIn("technical-secret", error.exception.detail)
+
+    def test_directory_scopes_alone_and_admin_without_directory_scopes_are_denied(self):
+        for scopes in [["xs_user.read", "xs_authorization.read"], ["platform!t1.Admin"],
+                       ["platform!t1.Admin", "xs_user.read"]]:
+            with patch("api.routes.users.list_users") as listing:
+                response = self.client.get("/api/users", headers={"Authorization": "Bearer " + self.token(scopes)})
+                self.assertEqual(response.status_code, 403)
+                listing.assert_not_called()
+
+    def test_future_issue_time_and_wrong_tenant_are_denied_in_development(self):
+        for extra in [{"iat": int(time.time()) + 300}, {"nbf": int(time.time()) + 300},
+                      {"zid": "another-zone"}, {"aud": ["another-client"]}]:
+            with patch("api.routes.users.list_users") as listing:
+                response = self.client.get("/api/users", headers={"Authorization": "Bearer " + self.token(**extra)})
+                self.assertEqual(response.status_code, 401, response.text)
+                listing.assert_not_called()
+
+    def test_group_membership_and_canonical_names_are_resolved(self):
+        session = Mock()
+        session.__enter__ = Mock(return_value=session)
+        session.__exit__ = Mock(return_value=False)
+        session.get.side_effect = [self.response({"resources": [{"id": "u1", "groups": [{"value": "g1", "display": "g1"}]}], "totalResults": 1}),
+                                  self.response({"resources": [
+                                      {"id": "g1", "displayName": "Platform Member (dev)"},
+                                      {"id": "g2", "displayName": "Platform Administrator (dev)", "members": [{"value": "u1", "type": "USER"}]},
+                                  ], "totalResults": 2})]
+        with patch.object(service, "xsuaa_credentials", return_value={"apiurl": "https://api.example.test"}), patch.object(requests, "Session", return_value=session):
+            data = service.list_users("Bearer administrator-token")
+        self.assertEqual(data["total"], 1)
+        self.assertEqual(data["users"][0]["tier"], "Administrator")
+        self.assertEqual(len(data["users"][0]["role_collections"]), 2)
+
+    def test_empty_membership_directory_is_not_mistaken_for_missing_cockpit_collections(self):
+        session = Mock()
+        session.__enter__ = Mock(return_value=session)
+        session.__exit__ = Mock(return_value=False)
+        session.get.return_value = self.response({"resources": [], "totalResults": 0})
+        with patch.object(service, "xsuaa_credentials", return_value={"apiurl": "https://api.example.test"}), patch.object(requests, "Session", return_value=session):
+            data = service.list_users("Bearer administrator-token")
+        self.assertEqual(data["total"], 0)
+        self.assertEqual(data["source"], "xsuaa")
+        self.assertEqual(data["project_role_collections"], ["Platform Administrator (dev)", "Platform Member (dev)"])
+
+    def test_collection_without_members_does_not_block_existing_project_members(self):
+        session = Mock()
+        session.__enter__ = Mock(return_value=session)
+        session.__exit__ = Mock(return_value=False)
+        session.get.side_effect = [self.response({"resources": [{"id": "u1", "groups": [{"value": "g1"}]}], "totalResults": 1}),
+                                  self.response({"resources": [{"id": "g1", "displayName": "Platform Member (dev)",
+                                                             "urn:sap:cloud:scim:schemas:extension:custom:2.0:Group": {"name": "internal-group-name"}}], "totalResults": 1})]
+        with patch.object(service, "xsuaa_credentials", return_value={"apiurl": "https://api.example.test"}), patch.object(requests, "Session", return_value=session):
+            data = service.list_users("Bearer administrator-token")
+        self.assertEqual(data["total"], 1)
+        self.assertEqual(data["users"][0]["tier"], "Member")
+
+    def test_profile_and_token_login_validate_signature_and_expiry_each_time(self):
+        response = self.client.get("/api/auth/me", headers={"Authorization": "Bearer " + self.token()})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["role"], "Admin")
+        for token in [self.token(exp=int(time.time()) - 10),
+                      jwt.encode({"sub": "attacker", "scope": ["platform!t1.Admin"]}, "test-only" * 4, algorithm="HS256")]:
+            response = self.client.get("/api/auth/me", headers={"Authorization": "Bearer " + token})
+            self.assertEqual(response.status_code, 401)
+            response = self.client.post("/api/auth/login", json={"ias_token": token})
+            self.assertEqual(response.status_code, 401)
+
+    def test_client_supplied_identity_cannot_override_verified_user(self):
+        response = self.client.get("/identity?user_id=another-user", headers={
+            "Authorization": "Bearer " + self.token(), "X-User-Id": "another-user",
+        })
+        self.assertEqual(response.json()["user_id"], "admin@example.test")
+        response = self.client.get("/identity?user_id=another-user", headers={"X-User-Id": "another-user"})
+        self.assertEqual(response.status_code, 401)
+
+    def test_technical_token_and_unassigned_user_cannot_become_members(self):
+        for token, expected in [(self.token(grant_type="client_credentials"), 401), (self.token([]), 403)]:
+            response = self.client.get("/api/auth/me", headers={"Authorization": "Bearer " + token})
+            self.assertEqual(response.status_code, expected)
 
     @staticmethod
     def response(data):

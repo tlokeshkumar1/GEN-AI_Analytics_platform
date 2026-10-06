@@ -9,3 +9,4 @@ router/resources/assets/
 mta_archives/
 mta.yaml
 default-env.json
+*.private.mtaext

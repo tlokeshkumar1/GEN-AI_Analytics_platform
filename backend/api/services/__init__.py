@@ -1,6 +1,12 @@
-from api.services.hana_service import hana_service
-from api.services.ai_core_service import ai_core_service
-from api.services.vector_service import vector_service
-from api.services.embedding_service import embedding_service
-from api.services.analytics_service import analytics_service
-from api.services.dashboard_service import dashboard_service
+"""Load service exports on demand, without database writes during package import."""
+from importlib import import_module
+
+__all__ = ["hana_service", "ai_core_service", "vector_service", "embedding_service", "analytics_service", "dashboard_service"]
+
+
+def __getattr__(name):
+    if name in __all__:
+        value = getattr(import_module(f"api.services.{name}"), name)
+        globals()[name] = value
+        return value
+    raise AttributeError(name)
