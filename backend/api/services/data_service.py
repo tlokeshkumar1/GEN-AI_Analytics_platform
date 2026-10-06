@@ -37,8 +37,12 @@ class DataService:
     
     def get_dataframe(self) -> pd.DataFrame:
         """Get the cached dataframe."""
-        if self._df is None or self._df.empty:
-            self._load_data()
+        from api.services.excel_dataset_service import excel_dataset_service
+        current = excel_dataset_service.get_df()
+        if current is not self._df:
+            self._df = current
+            from api.services.schema_service import schema_service
+            schema_service.refresh(current)
         return self._df
     
     def get_kpis(self) -> Dict[str, Any]:

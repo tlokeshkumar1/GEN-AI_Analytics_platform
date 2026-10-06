@@ -55,7 +55,7 @@ export const DatasetEditView: React.FC<DatasetEditViewProps> = ({
 
   useEffect(() => {
     fetchRows();
-  }, [dataset.id]);
+  }, [dataset.id, dataset.currentVersion]);
 
   // Validation function for a given column value
   const validateField = (col: DatasetColumn, value: any): string | null => {
@@ -103,7 +103,7 @@ export const DatasetEditView: React.FC<DatasetEditViewProps> = ({
     // Update rows state
     setRows((prev) =>
       prev.map((r) => {
-        if (r.id === rowId) {
+        if ((r.__rowId ?? r.id) === rowId) {
           return { ...r, [colName]: newValue };
         }
         return r;
@@ -129,7 +129,7 @@ export const DatasetEditView: React.FC<DatasetEditViewProps> = ({
 
     setIsSaving(true);
     try {
-      const modifiedRows = rows.filter((r) => dirtyRowIds.has(r.id)).map((r) => {
+      const modifiedRows = rows.filter((r) => dirtyRowIds.has((r.__rowId ?? r.id))).map((r) => {
         // Coerce numbers where applicable
         const coerced: DatasetRow = { ...r };
         dataset.columns.forEach((col) => {
@@ -262,12 +262,12 @@ export const DatasetEditView: React.FC<DatasetEditViewProps> = ({
             </thead>
             <tbody className="divide-y divide-[#E2E8F0] text-[#0F172A]">
               {filteredRows.map((row) => {
-                const isRowDirty = dirtyRowIds.has(row.id);
-                const rowErrors = validationErrors[row.id] || {};
+                const isRowDirty = dirtyRowIds.has((row.__rowId ?? row.id));
+                const rowErrors = validationErrors[(row.__rowId ?? row.id)] || {};
 
                 return (
                   <tr
-                    key={row.id}
+                    key={(row.__rowId ?? row.id)}
                     className={`transition-colors ${
                       isRowDirty ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-[#F8FAFC]'
                     }`}
@@ -293,7 +293,7 @@ export const DatasetEditView: React.FC<DatasetEditViewProps> = ({
                               type={col.type === 'number' || col.type === 'percentage' ? 'number' : col.type === 'date' ? 'date' : 'text'}
                               step={col.type === 'percentage' ? '0.1' : col.type === 'number' ? '0.01' : undefined}
                               value={val ?? ''}
-                              onChange={(e) => handleCellChange(row.id, col.name, e.target.value)}
+                              onChange={(e) => handleCellChange((row.__rowId ?? row.id), col.name, e.target.value)}
                               className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-sans transition-all border ${
                                 fieldError
                                   ? 'border-rose-400 bg-rose-50/60 text-rose-900 focus:ring-1 focus:ring-rose-500'

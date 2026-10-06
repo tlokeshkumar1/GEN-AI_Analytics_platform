@@ -12,7 +12,8 @@ import {
   Info,
 } from 'lucide-react';
 import { DatasetItem, DatasetRow, AppendValidationResult } from '../../types/dataset';
-import { appendDatasetData } from '../../services/datasetService';
+import { appendDatasetData, previewAppendFile } from '../../services/datasetService';
+import { getApiErrorMessage } from '../../services/api';
 
 interface DatasetAppendViewProps {
   dataset: DatasetItem;
@@ -29,148 +30,44 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
 }) => {
   const [appendMode, setAppendMode] = useState<'upload' | 'manual'>('upload');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [manualRows, setManualRows] = useState<DatasetRow[]>([
-    {
-      id: `manual-1`,
-      OrderNumber: `ORD-${Date.now().toString().slice(-4)}`,
-      SalesDate: new Date().toISOString().split('T')[0],
-      Region: 'EMEA',
-      Country: 'Germany',
-      Category: 'Robotics & Automation',
-      Product: 'Sensors Array SX-10',
-      NetRevenueUSD: 45000,
-      GrossMarginPercent: 44.5,
-      Quantity: 5,
-      UnitCostUSD: 24975,
-      DistributionChannel: 'Direct Enterprise',
-      CustomerSegment: 'Enterprise',
-    },
-  ]);
+  const blankRow = (): DatasetRow => {
+    const rowId = crypto.randomUUID();
+    return {
+      ...Object.fromEntries(dataset.columns.map(c => [c.name, ''])),
+      id: dataset.columns.some(c => c.name === 'id') ? '' : rowId,
+      __rowId: rowId,
+    };
+  };
+  const [manualRows, setManualRows] = useState<DatasetRow[]>([blankRow()]);
+  const [isValidating, setIsValidating] = useState(false);
 
   const [validationResult, setValidationResult] = useState<AppendValidationResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Parse and validate a CSV text content against dataset schema
-  const parseAndValidateCSV = (text: string): AppendValidationResult => {
-    const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
-    if (lines.length < 2) {
-      return {
-        totalRows: 0,
-        validRows: [],
-        invalidRows: [],
-        missingColumns: dataset.columns.map((c) => c.name),
-        extraColumns: [],
-      };
-    }
-
-    const headers = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''));
-    const expectedColNames = new Set(dataset.columns.map((c) => c.name));
-    const missingColumns = dataset.columns
-      .filter((c) => c.required && !headers.includes(c.name))
-      .map((c) => c.name);
-    const extraColumns = headers.filter((h) => !expectedColNames.has(h));
-
-    const validRows: DatasetRow[] = [];
-    const invalidRows: AppendValidationResult['invalidRows'] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      const values = line.split(',').map((v) => v.trim().replace(/^["']|["']$/g, ''));
-      const rowData: Record<string, any> = {};
-      const errors: string[] = [];
-
-      headers.forEach((h, colIdx) => {
-        const rawVal = values[colIdx];
-        const colDef = dataset.columns.find((c) => c.name === h);
-
-        if (colDef) {
-          if (colDef.type === 'number') {
-            const num = Number(rawVal);
-            if (isNaN(num)) {
-              errors.push(`${h} must be numeric`);
-            } else {
-              rowData[h] = num;
-            }
-          } else if (colDef.type === 'percentage') {
-            const num = Number(rawVal);
-            if (isNaN(num) || num < 0 || num > 100) {
-              errors.push(`${h} must be 0-100%`);
-            } else {
-              rowData[h] = num;
-            }
-          } else {
-            rowData[h] = rawVal ?? '';
-          }
-        } else {
-          rowData[h] = rawVal;
-        }
-      });
-
-      // Check required fields
-      dataset.columns.forEach((c) => {
-        if (c.required && (rowData[c.name] === undefined || rowData[c.name] === '')) {
-          errors.push(`Missing required column ${c.name}`);
-        }
-      });
-
-      if (errors.length > 0) {
-        invalidRows.push({ rowNumber: i, data: rowData, errors });
-      } else {
-        validRows.push({
-          ...rowData,
-          id: `append-${Date.now()}-${i}`,
-        } as DatasetRow);
-      }
-    }
-
-    return {
-      totalRows: lines.length - 1,
-      validRows,
-      invalidRows,
-      missingColumns,
-      extraColumns,
-    };
-  };
-
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
     setSelectedFile(file);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const res = parseAndValidateCSV(text);
-      setValidationResult(res);
-    };
-    reader.readAsText(file);
+    setValidationResult(null);
+    setIsValidating(true);
+    try {
+      setValidationResult(await previewAppendFile(dataset.id, file));
+    } catch (err) {
+      setSelectedFile(null);
+      onToast(getApiErrorMessage(err, 'Could not validate append file.'));
+    } finally { setIsValidating(false); }
   };
 
-  // Add a blank row in manual mode
   const handleAddManualRow = () => {
-    const newRow: DatasetRow = {
-      id: `manual-${Date.now()}`,
-      OrderNumber: `ORD-${Date.now().toString().slice(-4)}`,
-      SalesDate: new Date().toISOString().split('T')[0],
-      Region: 'North America',
-      Country: 'United States',
-      Category: 'Robotics & Automation',
-      Product: 'Auxiliary Module',
-      NetRevenueUSD: 25000,
-      GrossMarginPercent: 40.0,
-      Quantity: 1,
-      UnitCostUSD: 15000,
-      DistributionChannel: 'Direct Enterprise',
-      CustomerSegment: 'Enterprise',
-    };
-    setManualRows((prev) => [...prev, newRow]);
+    setManualRows(prev => [...prev, blankRow()]);
   };
 
   const handleRemoveManualRow = (id: string) => {
-    setManualRows((prev) => prev.filter((r) => r.id !== id));
+    setManualRows((prev) => prev.filter((r) => (r.__rowId ?? r.id) !== id));
   };
 
   const handleManualCellChange = (id: string, colName: string, value: any) => {
     setManualRows((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [colName]: value } : r))
+      prev.map((r) => ((r.__rowId ?? r.id) === id ? { ...r, [colName]: value } : r))
     );
   };
 
@@ -180,6 +77,10 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
       if (appendMode === 'upload') {
         if (!validationResult || validationResult.validRows.length === 0) {
           onToast('No valid rows available to append.');
+          return;
+        }
+        if (validationResult.invalidRows.length || validationResult.missingColumns.length || validationResult.extraColumns.length) {
+          onToast('Correct the schema and invalid rows before appending.');
           return;
         }
         const res = await appendDatasetData(dataset.id, {
@@ -199,7 +100,7 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
           const item = { ...r };
           dataset.columns.forEach((col) => {
             if ((col.type === 'number' || col.type === 'percentage') && item[col.name] !== undefined) {
-              item[col.name] = Number(item[col.name]) || 0;
+              item[col.name] = item[col.name] === '' ? null : Number(item[col.name]);
             }
           });
           return item;
@@ -211,7 +112,7 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
       }
       onAppended();
     } catch (err: any) {
-      onToast(`Error appending dataset: ${err?.message || 'Operation failed'}`);
+      onToast(getApiErrorMessage(err, 'Append failed.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -268,7 +169,7 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,.xlsx"
+              accept=".csv,.xlsx,.xls"
               className="hidden"
               onChange={(e) => {
                 if (e.target.files && e.target.files.length > 0) {
@@ -287,6 +188,7 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
             </p>
           </div>
 
+          {isValidating && <p role="status" className="text-sm text-slate-600">Validating file contents...</p>}
           {/* Validation Summary Box */}
           {validationResult && (
             <div className="rounded-xl border border-slate-200 bg-[#F8FAFC] p-4 space-y-3">
@@ -316,7 +218,7 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
                     <div className="text-xs font-bold text-rose-900">
                       {validationResult.invalidRows.length} Invalid Rows
                     </div>
-                    <div className="text-[10px] text-rose-700">Will be excluded</div>
+                    <div className="text-[10px] text-rose-700">Must be corrected before appending</div>
                   </div>
                 </div>
 
@@ -384,7 +286,10 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
               disabled={
                 !validationResult ||
                 validationResult.validRows.length === 0 ||
-                isSubmitting
+                isSubmitting || isValidating ||
+                validationResult.invalidRows.length > 0 ||
+                validationResult.missingColumns.length > 0 ||
+                validationResult.extraColumns.length > 0
               }
               className="h-10 px-6 rounded-xl bg-[#2563EB] text-white hover:bg-[#1D4ED8] transition-colors flex items-center gap-2 text-xs font-semibold shadow-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
@@ -435,7 +340,7 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {manualRows.map((row, idx) => (
-                  <tr key={row.id}>
+                  <tr key={(row.__rowId ?? row.id)}>
                     <td className="py-2 px-3 text-center text-slate-400 font-mono text-[10px]">
                       {idx + 1}
                     </td>
@@ -444,7 +349,7 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
                         <input
                           type={col.type === 'number' || col.type === 'percentage' ? 'number' : col.type === 'date' ? 'date' : 'text'}
                           value={row[col.name] ?? ''}
-                          onChange={(e) => handleManualCellChange(row.id, col.name, e.target.value)}
+                          onChange={(e) => handleManualCellChange((row.__rowId ?? row.id), col.name, e.target.value)}
                           className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:border-[#2563EB] focus:outline-none"
                         />
                       </td>
@@ -452,7 +357,7 @@ export const DatasetAppendView: React.FC<DatasetAppendViewProps> = ({
                     <td className="py-1.5 px-2 text-center">
                       <button
                         type="button"
-                        onClick={() => handleRemoveManualRow(row.id)}
+                        onClick={() => handleRemoveManualRow((row.__rowId ?? row.id))}
                         className="text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                         title="Remove row"
                       >

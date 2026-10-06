@@ -184,6 +184,9 @@ class AICoreService:
         return self.generate_nvidia_completion(prompt)
 
     def generate_embedding(self, text: str) -> List[float]:
+        return self.generate_embeddings([text])[0]
+
+    def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
         api_key = settings.NVIDIA_API_KEY
         if not api_key:
             logger.error("NVIDIA API key not configured")
@@ -195,7 +198,7 @@ class AICoreService:
         }
         payload = {
             "model": settings.NVIDIA_EMBEDDING_MODEL,
-            "input": [text],
+            "input": texts,
             "input_type": "passage"
         }
         try:
@@ -203,13 +206,13 @@ class AICoreService:
                 settings.NVIDIA_API_URL,
                 headers,
                 payload,
-                timeout=10,
+                timeout=30,
                 max_retries=2
             )
-            embedding_2048 = res.json()["data"][0]["embedding"]
-            # Slice to 1536 to match the HANA database column size (REAL_VECTOR(1536))
-            embedding = embedding_2048[:1536]
-            return embedding
+            items = sorted(res.json()["data"], key=lambda item: item.get("index", 0))
+            if len(items) != len(texts):
+                raise ValueError("Embedding provider returned an incomplete batch")
+            return [item["embedding"][:1536] for item in items]
         except Exception as e:
             logger.error(f"NVIDIA Embedding request failed: {e}")
             raise RuntimeError(f"NVIDIA Embedding request failed: {e}")

@@ -11,6 +11,49 @@ _schema_initialized = False
 _schema_lock = threading.Lock()
 
 class HANAVectorClient:
+    def replace_dataset_version(self, dataset_id, version, chunks, embeddings, source):
+        """Publish a complete version in one transaction; preserve other versions."""
+        if len(chunks) != len(embeddings):
+            raise ValueError("Every chunk must have a matching embedding")
+        from api.database.connection import db_manager
+        conn = db_manager.get_connection()
+        if conn is None:
+            raise RuntimeError("HANA vector database is unavailable")
+        cursor = None
+        try:
+            conn.setautocommit(False)
+            cursor = conn.cursor()
+            prefix = f"{dataset_id}:v{version}:"
+            cursor.execute("DELETE FROM VECTOR_TABLE WHERE ID LIKE ?", (prefix + "%",))
+            metadata = json.dumps({"dataset_id": dataset_id, "version": version, "source": source})
+            sql = "INSERT INTO VECTOR_TABLE (ID, TEXT_CHUNK, EMBEDDING, METADATA) VALUES (?, ?, TO_REAL_VECTOR(?), ?)"
+            for start in range(0, len(chunks), 64):
+                cursor.executemany(sql, [(prefix + str(i), chunks[i], str(embeddings[i]), metadata)
+                                        for i in range(start, min(start + 64, len(chunks)))])
+            conn.commit()
+            cursor.close()
+            cursor = None
+        except Exception:
+            try:
+                conn.rollback()
+            finally:
+                conn.close()
+            raise
+        else:
+            db_manager.return_connection(conn)
+        finally:
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+
+    def search_dataset_version(self, dataset_id, version, embedding, top_k):
+        sql = f"""SELECT TOP {int(top_k)} ID, TEXT_CHUNK, METADATA,
+                  COSINE_SIMILARITY(EMBEDDING, TO_REAL_VECTOR(?)) AS SCORE
+                  FROM VECTOR_TABLE WHERE ID LIKE ? ORDER BY SCORE DESC"""
+        return hana_client.execute_query(sql, (str(embedding), f"{dataset_id}:v{version}:%"))
+
     def __init__(self):
         # Initialize schema at startup (runs once per process)
         self._ensure_schema_once()

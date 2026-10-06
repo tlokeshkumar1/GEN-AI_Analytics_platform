@@ -518,6 +518,7 @@ class PythonGraphAgent:
         read_stmt = (
             f'pd.read_pickle(r"{clean_ds}")'
             if clean_ds.endswith(".pkl")
+            else f'pd.read_csv(r"{clean_ds}")' if clean_ds.lower().endswith(".csv")
             else f'pd.read_excel(r"{clean_ds}")'
         )
 
@@ -626,6 +627,7 @@ Generate complete Python code only. No explanation."""
         read_stmt = (
             f'df = pd.read_pickle(r"{clean_ds}")'
             if clean_ds.endswith(".pkl")
+            else f'df = pd.read_csv(r"{clean_ds}")' if clean_ds.lower().endswith(".csv")
             else f'df = pd.read_excel(r"{clean_ds}")'
         )
 

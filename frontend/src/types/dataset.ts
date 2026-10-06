@@ -21,11 +21,26 @@ export interface DatasetItem {
   rowCount: number;
   columnCount: number;
   lastUpdated: string;
-  format: 'xlsx' | 'csv' | 'parquet';
+  format: 'xlsx' | 'xls' | 'csv' | 'parquet';
   source: string;
   sizeBytes?: number;
   status: 'Ready' | 'Ingesting' | 'Error';
   columns: DatasetColumn[];
+  currentVersion?: number;
+  currentFilename?: string;
+  versions?: DatasetVersion[];
+  embeddingStatus?: 'Ready' | 'Pending' | 'Error';
+  embeddingCount?: number;
+  hanaSyncStatus?: 'Ready' | 'Pending' | 'Error';
+  isActive?: boolean;
+}
+
+export interface DatasetVersion {
+  version: number;
+  filename: string;
+  createdAt: string;
+  rowCount: number;
+  operation: string;
 }
 
 export interface DatasetRow {

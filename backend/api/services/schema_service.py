@@ -266,9 +266,9 @@ class SchemaService:
 
     def get_metadata(self) -> Dict[str, ColumnMetadata]:
         """Get metadata, auto-loading from DataService if needed."""
+        from api.services.data_service import data_service
+        df = data_service.get_dataframe()
         if self._metadata is None:
-            from api.services.data_service import data_service
-            df = data_service.get_dataframe()
             self._metadata = self._build_metadata(df)
             logger.info(f"Schema metadata initialized: {len(self._metadata)} columns")
         return self._metadata

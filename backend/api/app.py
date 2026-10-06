@@ -19,6 +19,7 @@ from api.routes.chat import router as chat_router
 from api.routes.chat_stream import router as chat_stream_router
 from api.routes.graph import router as graph_router
 from api.routes.upload import router as upload_router
+from api.routes.datasets import router as datasets_router
 
 app = FastAPI(
     title="GEN-AI Analytics Platform API",
@@ -55,6 +56,7 @@ app.include_router(chat_router)
 app.include_router(chat_stream_router)
 app.include_router(graph_router)
 app.include_router(upload_router)
+app.include_router(datasets_router)
 
 @app.get("/")
 def root():

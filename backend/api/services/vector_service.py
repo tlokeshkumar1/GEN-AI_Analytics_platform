@@ -1,6 +1,5 @@
 from typing import List, Dict, Any
 import threading
-from api.database.vector_client import vector_client
 from api.services.ai_core_service import ai_core_service
 from api.utils.logger import get_logger
 
@@ -11,7 +10,14 @@ _query_cache = {}
 _cache_lock = threading.Lock()
 
 class VectorService:
+    def clear_cache(self):
+        with _cache_lock:
+            _query_cache.clear()
+
     def search_similar_chunks(self, text_query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        from api.services.dataset_service import dataset_service
+        if dataset_service.catalog_path.exists():
+            return dataset_service.search(text_query, top_k)
         # Check cache first
         cache_key = f"{text_query}:{top_k}"
         with _cache_lock:
@@ -20,6 +26,7 @@ class VectorService:
                 return _query_cache[cache_key]
         
         try:
+            from api.database.vector_client import vector_client
             embedding = ai_core_service.generate_embedding(text_query)
             results = vector_client.similarity_search(embedding, top_k)
         except Exception as e:
@@ -36,6 +43,7 @@ class VectorService:
         return results
 
     def add_document_vector(self, doc_id: str, text: str, metadata: Any = None):
+        from api.database.vector_client import vector_client
         embedding = ai_core_service.generate_embedding(text)
         vector_client.store_vector(doc_id, text, embedding, metadata)
 

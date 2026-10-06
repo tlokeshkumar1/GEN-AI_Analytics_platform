@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { DatasetItem, DatasetRow } from '../../types/dataset';
 import { getDatasetData } from '../../services/datasetService';
+import { getApiErrorMessage } from '../../services/api';
 
 interface DatasetViewTableProps {
   dataset: DatasetItem;
@@ -29,13 +30,15 @@ export const DatasetViewTable: React.FC<DatasetViewTableProps> = ({
   const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [sortField, setSortField] = useState<string>('OrderNumber');
+  const [sortField, setSortField] = useState<string>(dataset.columns[0]?.name ?? '');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchRows = async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const data = await getDatasetData(
         dataset.id,
@@ -49,7 +52,9 @@ export const DatasetViewTable: React.FC<DatasetViewTableProps> = ({
       setTotalRows(data.totalRows);
       setTotalPages(data.totalPages);
     } catch (err) {
-      console.error('Failed to load dataset rows:', err);
+      setRows([]);
+      setTotalRows(0);
+      setError(getApiErrorMessage(err, 'Failed to load dataset rows.'));
     } finally {
       setIsLoading(false);
     }
@@ -61,7 +66,7 @@ export const DatasetViewTable: React.FC<DatasetViewTableProps> = ({
 
   useEffect(() => {
     fetchRows();
-  }, [dataset.id, currentPage, pageSize, sortField, sortDir, searchQuery]);
+  }, [dataset.id, dataset.currentVersion, currentPage, pageSize, sortField, sortDir, searchQuery]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -153,8 +158,10 @@ export const DatasetViewTable: React.FC<DatasetViewTableProps> = ({
         {isLoading ? (
           <div className="py-24 flex flex-col items-center justify-center gap-3 text-slate-500">
             <RefreshCw className="w-6 h-6 animate-spin text-[#2563EB]" />
-            <span className="text-xs font-medium">Fetching dataset records from HANA partition...</span>
+            <span className="text-xs font-medium">Loading dataset records...</span>
           </div>
+        ) : error ? (
+          <div role="alert" className="p-6 text-sm text-red-700">{error}</div>
         ) : rows.length === 0 ? (
           <div className="py-24 text-center space-y-2 text-slate-500">
             <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
@@ -203,7 +210,7 @@ export const DatasetViewTable: React.FC<DatasetViewTableProps> = ({
             </thead>
             <tbody className="divide-y divide-[#E2E8F0] text-[#0F172A]">
               {rows.map((row) => (
-                <tr key={row.id} className="hover:bg-[#F8FAFC] transition-colors">
+                <tr key={(row.__rowId ?? row.id)} className="hover:bg-[#F8FAFC] transition-colors">
                   {displayColumns.map((col) => {
                     const rawVal = row[col.name];
                     let formattedVal = String(rawVal ?? '');

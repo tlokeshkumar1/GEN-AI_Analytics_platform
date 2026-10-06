@@ -50,6 +50,9 @@ class UploadResponse(BaseModel):
     embeddings_generated: Optional[int] = 0
     status: str
     message: str
+    dataset: Optional[Dict[str, Any]] = None
+    version: Optional[int] = None
+    embedding_status: Optional[str] = None
 
 
 # ── Enhanced Response Models (v2) ─────────────────────────────────────────────
@@ -79,4 +82,3 @@ class EnhancedChatResponse(BaseModel):
     query_plan: Optional[Dict[str, Any]] = None
     records_matched: Optional[int] = None
     session_id: str = "default"
-

@@ -176,7 +176,7 @@ export const DatasetActionPanel: React.FC<DatasetActionPanelProps> = ({
       <div className="mt-auto p-4 border-t border-[#E2E8F0] bg-[#F8FAFC] hidden lg:block">
         <div className="flex items-center gap-2 text-[11px] text-[#64748B]">
           <Database className="w-3.5 h-3.5 text-[#2563EB]" />
-          <span>HANA Vector Cloud Sync Active</span>
+          <span>{dataset.hanaSyncStatus === 'Ready' ? 'HANA vector sync ready' : dataset.embeddingStatus === 'Ready' ? 'Saved version embeddings ready' : 'Current source text available'}</span>
         </div>
       </div>
     </div>

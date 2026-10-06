@@ -1,5 +1,6 @@
 from typing import Dict, Any, List, Optional, Callable
 import re
+import json
 import time
 from api.rag.retriever import retriever
 from api.rag.prompt_builder import prompt_builder
@@ -13,6 +14,14 @@ from api.utils.request_context import RequestContext
 from api.utils.logger import get_logger
 
 logger = get_logger("rag.pipeline")
+
+
+def current_source_metadata(order_id):
+    from api.services.dataset_service import dataset_service
+    entry, _ = dataset_service.active()
+    return json.dumps({"source": entry["name"] if entry else "SAC_Sales_Preprocessed",
+                       "version": entry["currentVersion"] if entry else None,
+                       "sheet": "Sheet1", "row_id": order_id})
 
 
 class RAGPipeline:
@@ -152,7 +161,7 @@ class RAGPipeline:
                     "ID": order_id,
                     "TEXT_CHUNK": f"Order {order_id}: Revenue={rev_fmt}, Margin={margin_pct_fmt}, Customer={customer}, Country={country}, Product={product}, Quantity={qty}",
                     "SCORE": 1.0,
-                    "METADATA": f'{{"source": "SAC_Sales_Preprocessed", "sheet": "Sheet1", "row_id": "{order_id}"}}'
+                    "METADATA": current_source_metadata(order_id)
                 }],
                 "intent": "exact_order"
             }
@@ -699,7 +708,7 @@ class RAGPipeline:
                         f"Calculated Unit Gross Margin: ${unit_margin:,.2f} per unit."
                     ),
                     "SCORE": 1.0,
-                    "METADATA": f'{{"source": "SAC_Sales_Preprocessed", "sheet": "Sheet1", "row_id": "{order_id}"}}'
+                    "METADATA": current_source_metadata(order_id)
                 }
                 context_chunks.append(order_context_chunk)
 
@@ -812,7 +821,7 @@ class RAGPipeline:
                         f"Calculated Unit Gross Margin: ${unit_margin:,.2f} per unit."
                     ),
                     "SCORE": 1.0,
-                    "METADATA": f'{{"source": "SAC_Sales_Preprocessed", "sheet": "Sheet1", "row_id": "{order_id}"}}'
+                    "METADATA": current_source_metadata(order_id)
                 }
                 context_chunks.append(order_context_chunk)
 

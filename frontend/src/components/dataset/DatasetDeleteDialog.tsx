@@ -73,7 +73,7 @@ export const DatasetDeleteDialog: React.FC<DatasetDeleteDialogProps> = ({
     if (selectedRowIds.size === sampleRows.length) {
       setSelectedRowIds(new Set());
     } else {
-      setSelectedRowIds(new Set(sampleRows.map((r) => r.id)));
+      setSelectedRowIds(new Set(sampleRows.map((r) => (r.__rowId ?? r.id))));
     }
   };
 
@@ -188,10 +188,10 @@ export const DatasetDeleteDialog: React.FC<DatasetDeleteDialogProps> = ({
                   <div className="py-8 text-center text-slate-400">No rows in dataset</div>
                 ) : (
                   sampleRows.map((r) => {
-                    const isChecked = selectedRowIds.has(r.id);
+                    const isChecked = selectedRowIds.has((r.__rowId ?? r.id));
                     return (
                       <label
-                        key={r.id}
+                        key={(r.__rowId ?? r.id)}
                         className={`p-2.5 flex items-center gap-3 cursor-pointer hover:bg-white transition-colors ${
                           isChecked ? 'bg-rose-50/50' : ''
                         }`}
@@ -199,12 +199,12 @@ export const DatasetDeleteDialog: React.FC<DatasetDeleteDialogProps> = ({
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() => handleToggleRow(r.id)}
+                          onChange={() => handleToggleRow((r.__rowId ?? r.id))}
                           className="w-4 h-4 accent-rose-600 rounded cursor-pointer"
                         />
                         <div className="flex-1 flex items-center justify-between min-w-0">
                           <span className="font-mono font-medium text-slate-800">
-                            {r.OrderNumber || r.id}
+                            {r.OrderNumber || (r.__rowId ?? r.id)}
                           </span>
                           <span className="text-[11px] text-slate-500">
                             {r.Product || r.Category || ''}
@@ -227,7 +227,7 @@ export const DatasetDeleteDialog: React.FC<DatasetDeleteDialogProps> = ({
                   <span>Permanent Action Warning</span>
                 </div>
                 <p className="text-[11px] text-rose-800 leading-relaxed">
-                  This will completely delete <strong>{dataset.name}</strong> along with all {dataset.rowCount.toLocaleString()} rows and HANA vector embeddings. This action cannot be undone.
+                  This removes <strong>{dataset.name}</strong> from the dataset list, analytics, and RAG chat. Saved version files remain on disk for recovery.
                 </p>
               </div>
 

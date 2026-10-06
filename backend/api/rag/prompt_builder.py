@@ -19,7 +19,7 @@ class RAGPromptBuilder:
                     source = meta.get('source', '')
                     sheet = meta.get('sheet', '')
                     if source or sheet:
-                        meta_str = f" [Source: {source or 'N/A'}, Sheet: {sheet or 'N/A'}]"
+                        meta_str = f" [Source: {source or 'N/A'}, Version: {meta.get('version', 'N/A')}, Sheet: {sheet or 'N/A'}]"
                 except Exception:
                     pass
             formatted_chunks.append(f"-{meta_str} {text}")
@@ -71,6 +71,7 @@ Your goal is to extract as much relevant and reliable information as possible fr
    - Use Markdown tables when presenting comparative figures, category breakdowns, or quarterly metrics.
    - Bold key metrics, monetary values, percentages, and entity names (e.g., **$14.2M**, **+18.4%**).
 11. **Conversation Continuity**: If conversation history is provided, understand the context of follow-up questions. Resolve pronouns and references (e.g., "that", "it", "the same") using prior conversation turns.
+12. **Current Version**: Retrieved context represents the currently active dataset version, including a restored version after rollback. Previous chat answers may describe older versions. Always use current retrieved values over conversation history for facts and numbers. Do not reuse old figures when the current context lacks evidence.
 
 RETRIEVED VECTOR DB CONTEXT:
 {context_str}

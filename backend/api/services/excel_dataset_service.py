@@ -15,10 +15,14 @@ class ExcelDatasetService:
         self._data_as_of: Optional[datetime] = None
         self._file_mtime: Optional[float] = None
         self._last_load_time: Optional[datetime] = None
+        self._loaded_path: Optional[Path] = None
         # Base path pointing to preprocessing/output/SAC_Sales_Preprocessed.xlsx
         self._default_path = Path(__file__).resolve().parent.parent.parent / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx"
 
     def _resolve_dataset_path(self) -> Path:
+        from api.services.dataset_service import dataset_service
+        if dataset_service.catalog_path.exists():
+            return dataset_service.active_path() or dataset_service.output_dir / ".no_active_dataset"
         candidates = [
             self._default_path,
             Path(__file__).resolve().parent.parent.parent / "preprocessing" / "output" / "SAC_Sales_Preprocessed.xlsx",
@@ -50,6 +54,8 @@ class ExcelDatasetService:
 
         # Check if file on disk has a newer mtime than what we loaded
         current_mtime = resolved_path.stat().st_mtime
+        if resolved_path != self._loaded_path:
+            return True
         if self._file_mtime is not None and current_mtime != self._file_mtime:
             logger.info(
                 f"[DataFreshness] File mtime changed "
@@ -76,13 +82,24 @@ class ExcelDatasetService:
         if not resolved_path.exists():
             logger.warning(f"Excel dataset not found at candidate paths. Returning empty DataFrame until uploaded by user.")
             self._df = pd.DataFrame()
+            self._data_as_of = None
+            self._file_mtime = None
             self._last_load_time = datetime.now(timezone.utc)
             return self._df
 
         self._default_path = resolved_path
         logger.info(f"Loading preprocessed Excel dataset from: {self._default_path}")
 
-        self._df = pd.read_excel(self._default_path)
+        from api.services.dataset_service import dataset_service
+        entry, snapshot = dataset_service.active()
+        if entry:
+            self._df = dataset_service._frame(snapshot["rows"], snapshot["columns"])
+            for column in snapshot["columns"]:
+                if column["type"] == "date":
+                    self._df[column["name"]] = pd.to_datetime(self._df[column["name"]], errors="coerce")
+        else:
+            self._df = pd.read_csv(self._default_path) if self._default_path.suffix.lower() == ".csv" else pd.read_excel(self._default_path)
+        self._loaded_path = self._default_path
 
         # Record freshness metadata
         stat = self._default_path.stat()
@@ -107,9 +124,7 @@ class ExcelDatasetService:
 
     def get_data_as_of(self) -> Optional[str]:
         """Return the ISO 8601 UTC timestamp of the data source's last modification."""
-        if self._data_as_of is None:
-            # Force load to populate metadata
-            self.get_df()
+        self.get_df()
         return self._data_as_of.isoformat() if self._data_as_of else None
 
     def get_records_in_source(self) -> int:

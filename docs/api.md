@@ -113,3 +113,53 @@ Requires a valid application end-user token with local Admin scope and directory
 User fields: `id`, `name`, `email`, `role`, `tier`, `status`, `last_login`, `origin`, `role_collections`. Only direct assignments to the exact configured project Administrator/Member collections are returned; last login can be null.
 
 Errors: HTTP 401 for missing/invalid authentication, 403 for missing administrator/directory permissions, 503 for missing binding configuration, and 502 for upstream directory failures.
+## Dataset storage and versions
+
+Dataset management uses the backend as its source of truth. Uploads are saved under
+`backend/preprocessing/output/<filename without extension>/`. For example, uploading
+`Sales.xlsx` saves `Sales/Sales.xlsx`; the next saved change creates
+`Sales/Sales_V2.xlsx`, followed by `Sales_V3.xlsx`. Appends save the complete dataset
+with the additional rows. Re-uploading the same filename replaces the current data
+with a new complete snapshot. Files named `Sales_V2.xlsx` are treated as updates to
+`Sales`. Earlier files remain available for rollback.
+
+Each version has a persistent snapshot containing stable row identifiers, its schema,
+source chunks and matching embeddings. `datasets.json` records the selected versions
+and the dataset currently used by analytics and RAG. It is updated atomically after
+the version files have been written. Files already present directly in the output
+directory are imported once into the registry; their original files are retained.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| POST | `/api/upload` | Upload multipart `file`; return real row/embedding counts and dataset metadata |
+| GET | `/api/datasets` | List persisted datasets, schemas, versions and indexing status |
+| GET | `/api/datasets/{id}/data` | Read the selected version with `page`, `pageSize`, `sortField`, `sortDir`, and `search` |
+| PUT | `/api/datasets/{id}/rows` | Edit rows using JSON `{ "rows": [...] }`; preserve each row's `__rowId` |
+| POST | `/api/datasets/{id}/append/preview` | Parse multipart `file` and report actual rows and schema issues |
+| POST | `/api/datasets/{id}/append` | Append a multipart `file` or JSON array in form field `rows` |
+| DELETE | `/api/datasets/{id}/rows` | Delete JSON `{ "rowIds": ["stable-row-id"] }` from a new version |
+| GET | `/api/datasets/{id}/versions` | List saved versions and the current version number |
+| POST | `/api/datasets/{id}/rollback` | Restore JSON `{ "version": 1 }` for analytics and RAG |
+| POST | `/api/datasets/{id}/activate` | Choose this dataset's current version for analytics and chat |
+| POST | `/api/datasets/{id}/reindex` | Refresh embeddings and retry HANA synchronization for the current version |
+| DELETE | `/api/datasets/{id}` | Remove the dataset from the registry and retrieval; retain files for recovery |
+
+Uploads and mutations activate the changed dataset. Rollback selects an existing
+version and its matching embeddings, without deleting newer history. A change made
+after rollback uses the next unused version number, so history is never overwritten.
+RAG queries use only the active dataset and selected version; previous-version HANA
+vectors and query cache entries are excluded. Chat history supplies conversational
+context, while the currently retrieved version supplies authoritative data.
+
+Embedding requests are batched and unchanged chunks reuse matching vectors. HANA
+publishes each dataset version transactionally and retrieval filters by its version
+ID prefix. If HANA is unavailable, RAG uses the persisted version embeddings. If the
+embedding provider is unavailable, the upload remains saved and current source text
+is searched instead. The UI reports `embeddingStatus`, `embeddingCount`, and
+`hanaSyncStatus`; it never reports fabricated indexing success. Legacy imports start
+with `Pending` indexing; use **Refresh embeddings** to index them.
+
+The output directory must remain on persistent storage when deploying; files and
+the registry are local to the backend instance. Multiple API workers sharing that
+directory serialize version writes with a file lock. Independently deployed
+instances require shared storage for the registry and version files.
